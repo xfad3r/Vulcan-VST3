@@ -30,7 +30,9 @@ juce::AudioProcessorValueTreeState::ParameterLayout VulcanProcessor::createParam
     return { params.begin(), params.end() };
 }
 
-// Preset Functions Implementation
+// -------------------------------------------------------------------------
+// Preset Functions Implementation (Fixes LNK1120 & LNK2001)
+// -------------------------------------------------------------------------
 int VulcanProcessor::getNumPrograms() { return presets.size(); }
 int VulcanProcessor::getCurrentProgram() { return currentPreset; }
 
@@ -42,7 +44,8 @@ void VulcanProcessor::setCurrentProgram (int index)
     
     auto setParam = [&](const juce::String& id, float val) {
         auto* param = apvts.getParameter(id);
-        param->setValueNotifyingHost(param->convertTo0to1(val));
+        if (param != nullptr)
+            param->setValueNotifyingHost(param->convertTo0to1(val));
     };
 
     setParam("input_gain", p.inGain);
@@ -65,6 +68,9 @@ void VulcanProcessor::changeProgramName (int index, const juce::String& newName)
     if (index >= 0 && index < presets.size()) presets[index].name = newName;
 }
 
+// -------------------------------------------------------------------------
+// Core DSP Implementation
+// -------------------------------------------------------------------------
 bool VulcanProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
 {
     if (layouts.getMainOutputChannelSet() != juce::AudioChannelSet::mono() && layouts.getMainOutputChannelSet() != juce::AudioChannelSet::stereo())
@@ -128,12 +134,9 @@ void VulcanProcessor::updatePreEq()
     preEqChain.get<2>().coefficients = juce::dsp::IIR::Coefficients<float>::makeHighShelf(currentSampleRate, 10000.0f, 0.707f, highGain);
 }
 
-// -------------------------------------------------------------------------------------
-// FIXED: True Unity Gain Saturation Curve. Eliminates the +2.3dB volume jump at 0 Amount.
-// -------------------------------------------------------------------------------------
 void VulcanProcessor::applySaturation(juce::AudioBuffer<float>& buffer, float amount)
 {
-    if (amount <= 0.001f) return; // 100% Transparent when Amount is 0
+    if (amount <= 0.001f) return;
 
     float drive = 1.0f + (amount * 1.5f);
     const int numChannels = buffer.getNumChannels();
@@ -144,7 +147,6 @@ void VulcanProcessor::applySaturation(juce::AudioBuffer<float>& buffer, float am
         float* samples = buffer.getWritePointer(channel);
         for (int i = 0; i < numSamples; ++i)
         {
-            // Unity gain mathematical formula: low amplitudes remain at 1:1 ratio.
             samples[i] = std::tanh(samples[i] * drive) / drive;
         }
     }
