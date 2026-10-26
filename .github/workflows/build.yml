@@ -1,9 +1,7 @@
-name: Build VULCAN VST3 for Windows
+name: Build VULCAN VST3
 
 on:
   push:
-    - main
-      - master
   workflow_dispatch:
 
 jobs:
@@ -25,6 +23,5 @@ jobs:
 
       - name: Upload Artifact
         uses: actions/upload-artifact@v4
-        with:
-          name: VULCAN-by-DJSmartie-Windows-VST3
+        name: VULCAN-by-DJSmartie-Windows-VST3
           path: build/VulcanByDJSmartie_artefacts/Release/
