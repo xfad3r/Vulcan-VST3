@@ -15,9 +15,11 @@ jobs:
       - name: Checkout Repository
         uses: actions/checkout@v4
 
-      -up MSVC environment      - name: Configure CMake
+      - name: Set up MSVC environment
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Configure CMake
         run: cmake -B build -G Ninja -DCMAKE_BUILD_TYPE=Release
 
-      -Pluginswith:
-          name: VULCAN-by-DJSmartie-Windows-VST3
-          path: build/VulcanByDJSmartie_artefacts/Release/
+      - name: Build Plugins
+        run: cmake --build build --config Release
