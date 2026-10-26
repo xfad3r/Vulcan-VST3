@@ -24,6 +24,8 @@ juce_add_plugin(VulcanByDJSmartie
     PRODUCT_NAME "VULCAN by DJSmartie"
 )
 
+juce_generate_juce_header(VulcanByDJSmartie)
+
 target_sources(VulcanByDJSmartie
     PRIVATE
         Source/PluginProcessor.cpp
