@@ -6,6 +6,13 @@ VulcanProcessor::VulcanProcessor()
                       .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
       apvts (*this, nullptr, "Parameters", createParameterLayout())
 {
+    // Initialize Presets Array
+    presets = {
+        { "01. Default / Clean", 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f },
+        { "02. Warm Analog Master", 0.0f, 1.5f, -0.5f, 1.0f, 0.5f, 2.0f, -0.5f },
+        { "03. Punchy Mixbus", 0.0f, 2.0f, 0.0f, 1.5f, 1.2f, 4.0f, -1.0f },
+        { "04. Aggressive Drill", 0.0f, 3.5f, -1.0f, 2.5f, 1.8f, 6.0f, -2.0f }
+    };
 }
 
 VulcanProcessor::~VulcanProcessor() {}
@@ -13,29 +20,54 @@ VulcanProcessor::~VulcanProcessor() {}
 juce::AudioProcessorValueTreeState::ParameterLayout VulcanProcessor::createParameterLayout()
 {
     std::vector<std::unique_ptr<juce::RangedAudioParameter>> params;
-
-    params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID("input_gain", 1), "Input Gain", -24.0f, 24.0f, 0.0f));
-    params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID("eq_low", 1), "Pre EQ Low (100Hz)", -12.0f, 12.0f, 0.0f));
-    params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID("eq_mid", 1), "Pre EQ Mid (2.5kHz)", -12.0f, 12.0f, 0.0f));
-    params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID("eq_high", 1), "Pre EQ High (10kHz)", -12.0f, 12.0f, 0.0f));
-    params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID("amount", 1), "Character Amount", 0.0f, 2.0f, 0.0f));
-    params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID("limiter_drive", 1), "Limiter Drive", 0.0f, 18.0f, 0.0f));
-    params.push_back(std::make_unique<juce::AudioParameterFloat>(
-        juce::ParameterID("output_gain", 1), "Output Gain", -24.0f, 24.0f, 0.0f));
-
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID("input_gain", 1), "Input Gain", -24.0f, 24.0f, 0.0f));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID("eq_low", 1), "Pre EQ Low (100Hz)", -12.0f, 12.0f, 0.0f));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID("eq_mid", 1), "Pre EQ Mid (2.5kHz)", -12.0f, 12.0f, 0.0f));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID("eq_high", 1), "Pre EQ High (10kHz)", -12.0f, 12.0f, 0.0f));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID("amount", 1), "Character Amount", 0.0f, 2.0f, 0.0f));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID("limiter_drive", 1), "Limiter Drive", 0.0f, 18.0f, 0.0f));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID("output_gain", 1), "Output Gain", -24.0f, 24.0f, 0.0f));
     return { params.begin(), params.end() };
+}
+
+// Preset Functions Implementation
+int VulcanProcessor::getNumPrograms() { return presets.size(); }
+int VulcanProcessor::getCurrentProgram() { return currentPreset; }
+
+void VulcanProcessor::setCurrentProgram (int index)
+{
+    if (index < 0 || index >= presets.size()) return;
+    currentPreset = index;
+    auto& p = presets[index];
+    
+    auto setParam = [&](const juce::String& id, float val) {
+        auto* param = apvts.getParameter(id);
+        param->setValueNotifyingHost(param->convertTo0to1(val));
+    };
+
+    setParam("input_gain", p.inGain);
+    setParam("eq_low", p.eqLow);
+    setParam("eq_mid", p.eqMid);
+    setParam("eq_high", p.eqHigh);
+    setParam("amount", p.amount);
+    setParam("limiter_drive", p.limDrive);
+    setParam("output_gain", p.outGain);
+}
+
+const juce::String VulcanProcessor::getProgramName (int index)
+{
+    if (index >= 0 && index < presets.size()) return presets[index].name;
+    return {};
+}
+
+void VulcanProcessor::changeProgramName (int index, const juce::String& newName)
+{
+    if (index >= 0 && index < presets.size()) presets[index].name = newName;
 }
 
 bool VulcanProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
 {
-    if (layouts.getMainOutputChannelSet() != juce::AudioChannelSet::mono()
-     && layouts.getMainOutputChannelSet() != juce::AudioChannelSet::stereo())
+    if (layouts.getMainOutputChannelSet() != juce::AudioChannelSet::mono() && layouts.getMainOutputChannelSet() != juce::AudioChannelSet::stereo())
         return false;
     if (layouts.getMainOutputChannelSet() != layouts.getMainInputChannelSet())
         return false;
@@ -96,9 +128,14 @@ void VulcanProcessor::updatePreEq()
     preEqChain.get<2>().coefficients = juce::dsp::IIR::Coefficients<float>::makeHighShelf(currentSampleRate, 10000.0f, 0.707f, highGain);
 }
 
-void VulcanProcessor::applySaturation(juce::AudioBuffer<float>& buffer, float driveGainFactor)
+// -------------------------------------------------------------------------------------
+// FIXED: True Unity Gain Saturation Curve. Eliminates the +2.3dB volume jump at 0 Amount.
+// -------------------------------------------------------------------------------------
+void VulcanProcessor::applySaturation(juce::AudioBuffer<float>& buffer, float amount)
 {
-    const float drive = juce::jmax(0.1f, driveGainFactor);
+    if (amount <= 0.001f) return; // 100% Transparent when Amount is 0
+
+    float drive = 1.0f + (amount * 1.5f);
     const int numChannels = buffer.getNumChannels();
     const int numSamples = buffer.getNumSamples();
 
@@ -107,8 +144,8 @@ void VulcanProcessor::applySaturation(juce::AudioBuffer<float>& buffer, float dr
         float* samples = buffer.getWritePointer(channel);
         for (int i = 0; i < numSamples; ++i)
         {
-            float x = samples[i];
-            samples[i] = std::tanh(x * drive) / std::tanh(drive);
+            // Unity gain mathematical formula: low amplitudes remain at 1:1 ratio.
+            samples[i] = std::tanh(samples[i] * drive) / drive;
         }
     }
 }
@@ -120,7 +157,6 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
     const int numChannels = buffer.getNumChannels();
     const int numSamples = buffer.getNumSamples();
 
-    // Stage 1: Input & EQ
     inputGainModule.setGainDecibels(apvts.getRawParameterValue("input_gain")->load());
     juce::dsp::AudioBlock<float> block(buffer);
     juce::dsp::ProcessContextReplacing<float> context(block);
@@ -129,9 +165,7 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
     updatePreEq();
     preEqChain.process(context);
 
-    // Stage 2: Crossover & Multiband Compression
     float amount = apvts.getRawParameterValue("amount")->load();
-    float driveFactor = 1.0f + (amount * 1.5f);
     float thresholdDb = (amount <= 0.001f) ? 0.0f : (-6.0f - (amount * 10.0f));
     float ratio = 1.0f + (amount * 1.75f);
 
@@ -170,13 +204,13 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
         juce::dsp::AudioBlock<float> bandBlock(bandBuffers[i]);
         juce::dsp::ProcessContextReplacing<float> bandContext(bandBlock);
         bandCompressors[i].process(bandContext);
-        applySaturation(bandBuffers[i], driveFactor);
+        
+        applySaturation(bandBuffers[i], amount);
 
         for (int ch = 0; ch < numChannels; ++ch)
             buffer.addFrom(ch, 0, bandBuffers[i], ch, 0, numSamples);
     }
 
-    // Stage 3: Limiter & Output
     float limiterDrive = juce::Decibels::decibelsToGain(apvts.getRawParameterValue("limiter_drive")->load());
     buffer.applyGain(limiterDrive);
     limiter.process(context);
