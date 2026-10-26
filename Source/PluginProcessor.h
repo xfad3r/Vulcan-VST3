@@ -12,8 +12,8 @@ public:
     bool isBusesLayoutSupported (const BusesLayout& layouts) const override;
     void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
 
-    juce::AudioProcessorEditor* createEditor() override { return nullptr; }
-    bool hasEditor() const override { return false; } // Headless UI
+    juce::AudioProcessorEditor* createEditor() override { return new juce::GenericAudioProcessorEditor (*this); }
+    bool hasEditor() const override { return true; } // Generic UI
 
     const juce::String getName() const override { return "VULCAN by DJSmartie"; }
     bool acceptsMidi() const override { return false; }
