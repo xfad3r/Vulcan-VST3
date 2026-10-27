@@ -81,23 +81,14 @@ void VulcanProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     spec.maximumBlockSize = static_cast<juce::uint32> (samplesPerBlock);
     spec.numChannels = static_cast<juce::uint32> (getMainBusNumInputChannels());
 
-    inputGainModule.prepare(spec);
-    preEqChain.prepare(spec);
-    updatePreEq();
-
-    splitBuffer.setSize(getMainBusNumInputChannels(), samplesPerBlock);
-
-    lp250Chain.prepare(spec);
-    hp250Chain.prepare(spec);
-    lp4000Chain.prepare(spec);
-    hp4000Chain.prepare(spec);
+    // 1. Set States FIRST to avoid NaN outputs
+    updatePreEq(); 
 
     auto lp250 = juce::dsp::IIR::Coefficients<float>::makeLowPass(currentSampleRate, 250.0f, 0.7071f);
     auto hp250 = juce::dsp::IIR::Coefficients<float>::makeHighPass(currentSampleRate, 250.0f, 0.7071f);
     auto lp4000 = juce::dsp::IIR::Coefficients<float>::makeLowPass(currentSampleRate, 4000.0f, 0.7071f);
     auto hp4000 = juce::dsp::IIR::Coefficients<float>::makeHighPass(currentSampleRate, 4000.0f, 0.7071f);
 
-    // Assignment uses .state for ProcessorDuplicator
     lp250Chain.get<0>().state = lp250;
     lp250Chain.get<1>().state = lp250;
     hp250Chain.get<0>().state = hp250;
@@ -106,6 +97,16 @@ void VulcanProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     lp4000Chain.get<1>().state = lp4000;
     hp4000Chain.get<0>().state = hp4000;
     hp4000Chain.get<1>().state = hp4000;
+
+    // 2. Prepare Chains AFTER setting their states
+    inputGainModule.prepare(spec);
+    preEqChain.prepare(spec);
+    lp250Chain.prepare(spec);
+    hp250Chain.prepare(spec);
+    lp4000Chain.prepare(spec);
+    hp4000Chain.prepare(spec);
+
+    splitBuffer.setSize(getMainBusNumInputChannels(), samplesPerBlock);
 
     for (int i = 0; i < 3; ++i)
     {
@@ -129,7 +130,6 @@ void VulcanProcessor::updatePreEq()
     auto midGain = juce::Decibels::decibelsToGain(apvts.getRawParameterValue("eq_mid")->load());
     auto highGain = juce::Decibels::decibelsToGain(apvts.getRawParameterValue("eq_high")->load());
 
-    // Assignment uses .state for ProcessorDuplicator
     preEqChain.get<0>().state = juce::dsp::IIR::Coefficients<float>::makeLowShelf(currentSampleRate, 100.0f, 0.707f, lowGain);
     preEqChain.get<1>().state = juce::dsp::IIR::Coefficients<float>::makePeakFilter(currentSampleRate, 2500.0f, 1.0f, midGain);
     preEqChain.get<2>().state = juce::dsp::IIR::Coefficients<float>::makeHighShelf(currentSampleRate, 10000.0f, 0.707f, highGain);
@@ -160,6 +160,9 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
     const int numChannels = buffer.getNumChannels();
     const int numSamples = buffer.getNumSamples();
 
+    // FIXED: FL Studio variable block size crash prevention
+    splitBuffer.setSize(numChannels, numSamples, false, false, true);
+
     inputGainModule.setGainDecibels(apvts.getRawParameterValue("input_gain")->load());
     juce::dsp::AudioBlock<float> block(buffer);
     juce::dsp::ProcessContextReplacing<float> context(block);
@@ -176,6 +179,7 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
     {
         bandCompressors[i].setThreshold(thresholdDb);
         bandCompressors[i].setRatio(ratio);
+        // FIXED: Sync sizes to prevent host mute
         bandBuffers[i].setSize(numChannels, numSamples, false, false, true);
         bandBuffers[i].clear();
     }
