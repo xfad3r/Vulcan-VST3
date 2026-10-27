@@ -26,7 +26,6 @@ public:
     bool isMidiEffect() const override { return false; }
     double getTailLengthSeconds() const override { return 0.0; }
 
-    // Preset / Program Management API
     int getNumPrograms() override;
     int getCurrentProgram() override;
     void setCurrentProgram (int index) override;
@@ -44,13 +43,16 @@ private:
     int currentPreset = 0;
 
     juce::dsp::Gain<float> inputGainModule;
-    using Filter = juce::dsp::IIR::Filter<float>;
-    juce::dsp::ProcessorChain<Filter, Filter, Filter> preEqChain;
+    using Biquad = juce::dsp::IIR::Filter<float>;
+    juce::dsp::ProcessorChain<Biquad, Biquad, Biquad> preEqChain;
 
-    juce::dsp::LinkwitzRileyFilter<float> lowMidCrossoverLP;
-    juce::dsp::LinkwitzRileyFilter<float> lowMidCrossoverHP;
-    juce::dsp::LinkwitzRileyFilter<float> midHighCrossoverLP;
-    juce::dsp::LinkwitzRileyFilter<float> midHighCrossoverHP;
+    // WebAudio Emulation: Cascaded Biquads instead of Linkwitz-Riley
+    juce::dsp::ProcessorChain<Biquad, Biquad> lp250Chain;
+    juce::dsp::ProcessorChain<Biquad, Biquad> hp250Chain;
+    juce::dsp::ProcessorChain<Biquad, Biquad> lp4000Chain;
+    juce::dsp::ProcessorChain<Biquad, Biquad> hp4000Chain;
+
+    juce::AudioBuffer<float> splitBuffer; // Temp buffer for the WebAudio routing simulation
 
     std::array<juce::dsp::Compressor<float>, 3> bandCompressors;
     juce::AudioBuffer<float> bandBuffers[3];
@@ -60,8 +62,6 @@ private:
 
     double currentSampleRate = 44100.0;
     void updatePreEq();
-    
-    // Fixed DSP Signature
     void applySaturation(juce::AudioBuffer<float>& buffer, float amount);
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (VulcanProcessor)
