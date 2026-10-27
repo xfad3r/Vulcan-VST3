@@ -249,28 +249,8 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
 
     outputGainModule.setGainDecibels(apvts.getRawParameterValue("output_gain")->load());
     outputGainModule.process(context);
-}
 
-void VulcanProcessor::getStateInformation (juce::MemoryBlock& destData)
-{
-    auto state = apvts.copyState();
-    std::unique_ptr<juce::XmlElement> xml (state.createXml());
-    copyXmlToBinary (*xml, destData);
-}
-
-void VulcanProcessor::setStateInformation (const void* data, int sizeInBytes)
-{
-    std::unique_ptr<juce::XmlElement> xmlState (getXmlFromBinary (data, sizeInBytes));
-    if (xmlState != nullptr)
-        if (xmlState->hasTagName (apvts.state.getType()))
-            apvts.replaceState (juce::ValueTree::fromXml (*xmlState));
-}
-
-juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
-{
-    return new VulcanProcessor();
-}
-// -------------------------------------------------------------
+    // -------------------------------------------------------------
     // WebAudio 16-Bit PCM Quantization Noise Emulation
     // -------------------------------------------------------------
     for (int ch = 0; ch < numChannels; ++ch)
@@ -278,12 +258,9 @@ juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
         float* channelData = buffer.getWritePointer(ch);
         for (int s = 0; s < numSamples; ++s)
         {
-            // Περιορισμός και βίαιη μετατροπή σε 16-bit (Truncation)
             float sample = juce::jlimit(-1.0f, 1.0f, channelData[s]);
             int pcm16 = static_cast<int>(sample * 32767.0f);
-            
-            // Επαναφορά σε float, τώρα όμως "λερωμένο" με το quantization noise
             channelData[s] = static_cast<float>(pcm16) / 32767.0f;
         }
     }
-} // <--- Εδώ κλείνει η processBlock
+}
