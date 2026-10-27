@@ -270,3 +270,20 @@ juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
 {
     return new VulcanProcessor();
 }
+// -------------------------------------------------------------
+    // WebAudio 16-Bit PCM Quantization Noise Emulation
+    // -------------------------------------------------------------
+    for (int ch = 0; ch < numChannels; ++ch)
+    {
+        float* channelData = buffer.getWritePointer(ch);
+        for (int s = 0; s < numSamples; ++s)
+        {
+            // Περιορισμός και βίαιη μετατροπή σε 16-bit (Truncation)
+            float sample = juce::jlimit(-1.0f, 1.0f, channelData[s]);
+            int pcm16 = static_cast<int>(sample * 32767.0f);
+            
+            // Επαναφορά σε float, τώρα όμως "λερωμένο" με το quantization noise
+            channelData[s] = static_cast<float>(pcm16) / 32767.0f;
+        }
+    }
+} // <--- Εδώ κλείνει η processBlock
