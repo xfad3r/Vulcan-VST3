@@ -146,9 +146,10 @@ void VulcanProcessor::updatePreEq()
 
 void VulcanProcessor::applySaturation(juce::AudioBuffer<float>& buffer, float amount)
 {
-    if (amount <= 0.001f) return;
-
-    float drive = 1.0f + (amount * 1.5f);
+    // Restoring the Web App's exact non-linear normalization logic
+    float driveFactor = 1.0f + (amount * 1.5f);
+    float drive = juce::jmax(0.1f, driveFactor);
+    float norm = std::tanh(drive);
     const int numChannels = buffer.getNumChannels();
     const int numSamples = buffer.getNumSamples();
 
@@ -157,7 +158,7 @@ void VulcanProcessor::applySaturation(juce::AudioBuffer<float>& buffer, float am
         float* samples = buffer.getWritePointer(channel);
         for (int i = 0; i < numSamples; ++i)
         {
-            samples[i] = std::tanh(samples[i] * drive) / drive;
+            samples[i] = std::tanh(samples[i] * drive) / norm;
         }
     }
 }
