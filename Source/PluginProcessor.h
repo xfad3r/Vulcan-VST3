@@ -68,9 +68,6 @@ private:
 
     double currentSampleRate = 44100.0;
     void updatePreEq();
-    
-    // Saturation now directly processes an AudioBlock (needed for Oversampling API)
-    void applySaturation(juce::dsp::AudioBlock<float>& block, float amount);
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (VulcanProcessor)
 };
