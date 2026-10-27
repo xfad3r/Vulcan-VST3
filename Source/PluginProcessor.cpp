@@ -13,10 +13,10 @@ VulcanProcessor::VulcanProcessor()
         { "04. Drill Aggression",  0.0f,  2.0f,  0.5f,  1.5f, 1.0f, 4.0f, -1.5f }
     };
 
-    // Initialize 4x Oversampling (Factor 2 = 2^2 = 4x) for stereo processing
+    // Initialize 4x Oversampling (Factor 2 = 2^2 = 4x) using PolyphaseIIR
     for (int i = 0; i < 3; ++i) {
         oversamplers[i] = std::make_unique<juce::dsp::Oversampling<float>>(
-            2, 2, juce::dsp::Oversampling<float>::filterHalfBandFIREquiripple, true
+            2, 2, juce::dsp::Oversampling<float>::filterHalfBandPolyphaseIIR, true
         );
     }
 }
@@ -151,43 +151,6 @@ void VulcanProcessor::updatePreEq()
     preEqChain.get<2>().state = juce::dsp::IIR::Coefficients<float>::makeHighShelf(currentSampleRate, 10000.0f, 0.707f, highGain);
 }
 
-// ----------------------------------------------------------------------------------
-// Saturation refactored to process a raw AudioBlock directly (required for Oversampling API)
-// ----------------------------------------------------------------------------------
-void VulcanProcessor::applySaturation(juce::dsp::AudioBlock<float>& block, float amount)
-{
-    float driveFactor = 1.0f + (amount * 1.5f);
-    float drive = juce::jmax(0.1f, driveFactor);
-    float norm = std::tanh(drive);
-    
-    const int lutSize = 2048;
-    std::vector<float> curve(lutSize);
-    for (int i = 0; i < lutSize; ++i)
-    {
-        float x = (i * 2.0f) / (lutSize - 1.0f) - 1.0f;
-        curve[i] = std::tanh(x * drive) / norm;
-    }
-
-    const int numChannels = (int)block.getNumChannels();
-    const int numSamples = (int)block.getNumSamples();
-
-    for (int channel = 0; channel < numChannels; ++channel)
-    {
-        float* samples = block.getChannelPointer(channel);
-        for (int i = 0; i < numSamples; ++i)
-        {
-            float input = juce::jlimit(-1.0f, 1.0f, samples[i]);
-            float indexFloat = (input + 1.0f) * 0.5f * (lutSize - 1);
-            
-            int idx1 = static_cast<int>(indexFloat);
-            int idx2 = juce::jmin(idx1 + 1, lutSize - 1);
-            float frac = indexFloat - static_cast<float>(idx1);
-
-            samples[i] = curve[idx1] + frac * (curve[idx2] - curve[idx1]);
-        }
-    }
-}
-
 void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
 {
     juce::ignoreUnused(midiMessages);
@@ -245,22 +208,29 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
 
     buffer.clear();
     
-    // Core Engine Execution: Comp -> 4x Oversample -> Saturate -> Anti-Alias Downsample -> Sum
+    // Core Engine Execution: Comp -> 4x Oversample (IIR) -> Inline Saturate -> Anti-Alias Downsample -> Sum
     for (int i = 0; i < 3; ++i)
     {
         juce::dsp::AudioBlock<float> bandBlock(bandBuffers[i]);
         juce::dsp::ProcessContextReplacing<float> bandContext(bandBlock);
         
-        // 1. Dynamics
         bandCompressors[i].process(bandContext);
         
-        // 2. Upsample to 176.4kHz
-        juce::dsp::AudioBlock<float> oversampledBlock = oversamplers[i]->processSamplesUp(bandBlock);
+        auto oversampledBlock = oversamplers[i]->processSamplesUp(bandBlock);
         
-        // 3. Saturate (LUT) at 176.4kHz
-        applySaturation(oversampledBlock, amount);
+        const float driveFactor = 1.0f + (amount * 1.5f);
+        const float drive = juce::jmax(0.1f, driveFactor);
+        const float norm = std::tanh(drive);
+
+        for (size_t ch = 0; ch < oversampledBlock.getNumChannels(); ++ch)
+        {
+            float* ptr = oversampledBlock.getChannelPointer(ch);
+            for (size_t s = 0; s < oversampledBlock.getNumSamples(); ++s)
+            {
+                ptr[s] = std::tanh(ptr[s] * drive) / norm;
+            }
+        }
         
-        // 4. Downsample with FIR filter back to 44.1kHz (kills Aliasing)
         oversamplers[i]->processSamplesDown(bandBlock);
 
         for (int ch = 0; ch < numChannels; ++ch)
