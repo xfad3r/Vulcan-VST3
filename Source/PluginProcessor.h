@@ -44,14 +44,12 @@ private:
 
     juce::dsp::Gain<float> inputGainModule;
     
-    // FIXED: Wrap IIR filters in ProcessorDuplicator for true Stereo processing
     using FilterMono = juce::dsp::IIR::Filter<float>;
     using FilterCoef = juce::dsp::IIR::Coefficients<float>;
     using StereoBiquad = juce::dsp::ProcessorDuplicator<FilterMono, FilterCoef>;
 
     juce::dsp::ProcessorChain<StereoBiquad, StereoBiquad, StereoBiquad> preEqChain;
 
-    // WebAudio Emulation: Cascaded Stereo Biquads
     juce::dsp::ProcessorChain<StereoBiquad, StereoBiquad> lp250Chain;
     juce::dsp::ProcessorChain<StereoBiquad, StereoBiquad> hp250Chain;
     juce::dsp::ProcessorChain<StereoBiquad, StereoBiquad> lp4000Chain;
@@ -62,12 +60,17 @@ private:
     std::array<juce::dsp::Compressor<float>, 3> bandCompressors;
     juce::AudioBuffer<float> bandBuffers[3];
 
+    // Array of 4x Oversamplers for the 3 bands
+    std::array<std::unique_ptr<juce::dsp::Oversampling<float>>, 3> oversamplers;
+
     juce::dsp::Compressor<float> limiter;
     juce::dsp::Gain<float> outputGainModule;
 
     double currentSampleRate = 44100.0;
     void updatePreEq();
-    void applySaturation(juce::AudioBuffer<float>& buffer, float amount);
+    
+    // Saturation now directly processes an AudioBlock (needed for Oversampling API)
+    void applySaturation(juce::dsp::AudioBlock<float>& block, float amount);
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (VulcanProcessor)
 };
