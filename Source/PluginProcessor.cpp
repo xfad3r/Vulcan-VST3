@@ -107,23 +107,14 @@ void VulcanProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     midHighCrossoverHP.setCutoffFrequency(4000.0f);
     midHighCrossoverHP.setType(juce::dsp::LinkwitzRileyFilterType::highpass);
 
-    // 0: Low Band (<250Hz) - Slow attack to let kicks/808s punch through
-    bandCompressors[0].prepare(spec);
-    bandCompressors[0].setAttack(50.0f); 
-    bandCompressors[0].setRelease(150.0f);
-    bandBuffers[0].setSize(getMainBusNumInputChannels(), samplesPerBlock);
-
-    // 1: Mid Band (250Hz - 4kHz) - Fast attack for vocal/snare consistency
-    bandCompressors[1].prepare(spec);
-    bandCompressors[1].setAttack(15.0f);
-    bandCompressors[1].setRelease(80.0f);
-    bandBuffers[1].setSize(getMainBusNumInputChannels(), samplesPerBlock);
-
-    // 2: High Band (>4kHz) - Very fast attack to catch harsh transients/hi-hats
-    bandCompressors[2].prepare(spec);
-    bandCompressors[2].setAttack(5.0f);
-    bandCompressors[2].setRelease(50.0f);
-    bandBuffers[2].setSize(getMainBusNumInputChannels(), samplesPerBlock);
+    // AI Defeat Mode: Transient Smearing across all bands
+    for (int i = 0; i < 3; ++i)
+    {
+        bandCompressors[i].prepare(spec);
+        bandCompressors[i].setAttack(20.0f);
+        bandCompressors[i].setRelease(120.0f);
+        bandBuffers[i].setSize(getMainBusNumInputChannels(), samplesPerBlock);
+    }
 
     limiter.prepare(spec);
     limiter.setThreshold(0.0f);
