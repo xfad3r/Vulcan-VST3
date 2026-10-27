@@ -62,7 +62,7 @@ private:
     std::array<juce::dsp::Compressor<float>, 3> bandCompressors;
     juce::AudioBuffer<float> bandBuffers[3];
 
-    juce::dsp::Limiter<float> limiter;
+    juce::dsp::Compressor<float> limiter;
     juce::dsp::Gain<float> outputGainModule;
 
     double currentSampleRate = 44100.0;
