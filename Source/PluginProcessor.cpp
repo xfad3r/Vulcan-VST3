@@ -81,7 +81,6 @@ void VulcanProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     spec.maximumBlockSize = static_cast<juce::uint32> (samplesPerBlock);
     spec.numChannels = static_cast<juce::uint32> (getMainBusNumInputChannels());
 
-    // 1. Set States FIRST to avoid NaN outputs
     updatePreEq(); 
 
     auto lp250 = juce::dsp::IIR::Coefficients<float>::makeLowPass(currentSampleRate, 250.0f, 0.7071f);
@@ -98,7 +97,6 @@ void VulcanProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     hp4000Chain.get<0>().state = hp4000;
     hp4000Chain.get<1>().state = hp4000;
 
-    // 2. Prepare Chains AFTER setting their states
     inputGainModule.prepare(spec);
     preEqChain.prepare(spec);
     lp250Chain.prepare(spec);
@@ -116,11 +114,13 @@ void VulcanProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
         bandBuffers[i].setSize(getMainBusNumInputChannels(), samplesPerBlock);
     }
 
+    // WebAudio Compressor/Limiter Simulation (Fast Attack, High Ratio)
     limiter.prepare(spec);
     limiter.setThreshold(-0.1f);
     limiter.setRatio(20.0f);
-    limiter.setAttack(1.0f); // 1ms attack, επιτρέπει το κρυφό clipping του browser
+    limiter.setAttack(1.0f); 
     limiter.setRelease(50.0f);
+    
     outputGainModule.prepare(spec);
 }
 
@@ -160,7 +160,6 @@ void VulcanProcessor::applySaturation(juce::AudioBuffer<float>& buffer, float am
         float* samples = buffer.getWritePointer(channel);
         for (int i = 0; i < numSamples; ++i)
         {
-            // WebAudio WaveShaper linear interpolation
             float input = juce::jlimit(-1.0f, 1.0f, samples[i]);
             float indexFloat = (input + 1.0f) * 0.5f * (lutSize - 1);
             
@@ -180,7 +179,6 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
     const int numChannels = buffer.getNumChannels();
     const int numSamples = buffer.getNumSamples();
 
-    // FIXED: FL Studio variable block size crash prevention
     splitBuffer.setSize(numChannels, numSamples, false, false, true);
 
     inputGainModule.setGainDecibels(apvts.getRawParameterValue("input_gain")->load());
@@ -199,7 +197,6 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
     {
         bandCompressors[i].setThreshold(thresholdDb);
         bandCompressors[i].setRatio(ratio);
-        // FIXED: Sync sizes to prevent host mute
         bandBuffers[i].setSize(numChannels, numSamples, false, false, true);
         bandBuffers[i].clear();
     }
@@ -250,9 +247,7 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
     outputGainModule.setGainDecibels(apvts.getRawParameterValue("output_gain")->load());
     outputGainModule.process(context);
 
-    // -------------------------------------------------------------
     // WebAudio 16-Bit PCM Quantization Noise Emulation
-    // -------------------------------------------------------------
     for (int ch = 0; ch < numChannels; ++ch)
     {
         float* channelData = buffer.getWritePointer(ch);
@@ -263,4 +258,25 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
             channelData[s] = static_cast<float>(pcm16) / 32767.0f;
         }
     }
+}
+
+void VulcanProcessor::getStateInformation (juce::MemoryBlock& destData)
+{
+    auto state = apvts.copyState();
+    std::unique_ptr<juce::XmlElement> xml (state.createXml());
+    copyXmlToBinary (*xml, destData);
+}
+
+void VulcanProcessor::setStateInformation (const void* data, int sizeInBytes)
+{
+    std::unique_ptr<juce::XmlElement> xmlState (getXmlFromBinary (data, sizeInBytes));
+    if (xmlState != nullptr)
+        if (xmlState->hasTagName (apvts.state.getType()))
+            apvts.replaceState (juce::ValueTree::fromXml (*xmlState));
+}
+
+// ΑΥΤΗ ΕΙΝΑΙ Η ΣΥΝΑΡΤΗΣΗ ΠΟΥ ΕΛΕΙΠΕ
+juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
+{
+    return new VulcanProcessor();
 }
