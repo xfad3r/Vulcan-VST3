@@ -43,16 +43,21 @@ private:
     int currentPreset = 0;
 
     juce::dsp::Gain<float> inputGainModule;
-    using Biquad = juce::dsp::IIR::Filter<float>;
-    juce::dsp::ProcessorChain<Biquad, Biquad, Biquad> preEqChain;
+    
+    // FIXED: Wrap IIR filters in ProcessorDuplicator for true Stereo processing
+    using FilterMono = juce::dsp::IIR::Filter<float>;
+    using FilterCoef = juce::dsp::IIR::Coefficients<float>;
+    using StereoBiquad = juce::dsp::ProcessorDuplicator<FilterMono, FilterCoef>;
 
-    // WebAudio Emulation: Cascaded Biquads instead of Linkwitz-Riley
-    juce::dsp::ProcessorChain<Biquad, Biquad> lp250Chain;
-    juce::dsp::ProcessorChain<Biquad, Biquad> hp250Chain;
-    juce::dsp::ProcessorChain<Biquad, Biquad> lp4000Chain;
-    juce::dsp::ProcessorChain<Biquad, Biquad> hp4000Chain;
+    juce::dsp::ProcessorChain<StereoBiquad, StereoBiquad, StereoBiquad> preEqChain;
 
-    juce::AudioBuffer<float> splitBuffer; // Temp buffer for the WebAudio routing simulation
+    // WebAudio Emulation: Cascaded Stereo Biquads
+    juce::dsp::ProcessorChain<StereoBiquad, StereoBiquad> lp250Chain;
+    juce::dsp::ProcessorChain<StereoBiquad, StereoBiquad> hp250Chain;
+    juce::dsp::ProcessorChain<StereoBiquad, StereoBiquad> lp4000Chain;
+    juce::dsp::ProcessorChain<StereoBiquad, StereoBiquad> hp4000Chain;
+
+    juce::AudioBuffer<float> splitBuffer;
 
     std::array<juce::dsp::Compressor<float>, 3> bandCompressors;
     juce::AudioBuffer<float> bandBuffers[3];
