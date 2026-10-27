@@ -92,20 +92,20 @@ void VulcanProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     lp4000Chain.prepare(spec);
     hp4000Chain.prepare(spec);
 
-    // Q=0.7071f corresponds to a Butterworth response. Cascading two gives a dirty Linkwitz-Riley amplitude with phase smear.
     auto lp250 = juce::dsp::IIR::Coefficients<float>::makeLowPass(currentSampleRate, 250.0f, 0.7071f);
     auto hp250 = juce::dsp::IIR::Coefficients<float>::makeHighPass(currentSampleRate, 250.0f, 0.7071f);
     auto lp4000 = juce::dsp::IIR::Coefficients<float>::makeLowPass(currentSampleRate, 4000.0f, 0.7071f);
     auto hp4000 = juce::dsp::IIR::Coefficients<float>::makeHighPass(currentSampleRate, 4000.0f, 0.7071f);
 
-    lp250Chain.get<0>().coefficients = lp250;
-    lp250Chain.get<1>().coefficients = lp250;
-    hp250Chain.get<0>().coefficients = hp250;
-    hp250Chain.get<1>().coefficients = hp250;
-    lp4000Chain.get<0>().coefficients = lp4000;
-    lp4000Chain.get<1>().coefficients = lp4000;
-    hp4000Chain.get<0>().coefficients = hp4000;
-    hp4000Chain.get<1>().coefficients = hp4000;
+    // Assignment uses .state for ProcessorDuplicator
+    lp250Chain.get<0>().state = lp250;
+    lp250Chain.get<1>().state = lp250;
+    hp250Chain.get<0>().state = hp250;
+    hp250Chain.get<1>().state = hp250;
+    lp4000Chain.get<0>().state = lp4000;
+    lp4000Chain.get<1>().state = lp4000;
+    hp4000Chain.get<0>().state = hp4000;
+    hp4000Chain.get<1>().state = hp4000;
 
     for (int i = 0; i < 3; ++i)
     {
@@ -129,9 +129,10 @@ void VulcanProcessor::updatePreEq()
     auto midGain = juce::Decibels::decibelsToGain(apvts.getRawParameterValue("eq_mid")->load());
     auto highGain = juce::Decibels::decibelsToGain(apvts.getRawParameterValue("eq_high")->load());
 
-    preEqChain.get<0>().coefficients = juce::dsp::IIR::Coefficients<float>::makeLowShelf(currentSampleRate, 100.0f, 0.707f, lowGain);
-    preEqChain.get<1>().coefficients = juce::dsp::IIR::Coefficients<float>::makePeakFilter(currentSampleRate, 2500.0f, 1.0f, midGain);
-    preEqChain.get<2>().coefficients = juce::dsp::IIR::Coefficients<float>::makeHighShelf(currentSampleRate, 10000.0f, 0.707f, highGain);
+    // Assignment uses .state for ProcessorDuplicator
+    preEqChain.get<0>().state = juce::dsp::IIR::Coefficients<float>::makeLowShelf(currentSampleRate, 100.0f, 0.707f, lowGain);
+    preEqChain.get<1>().state = juce::dsp::IIR::Coefficients<float>::makePeakFilter(currentSampleRate, 2500.0f, 1.0f, midGain);
+    preEqChain.get<2>().state = juce::dsp::IIR::Coefficients<float>::makeHighShelf(currentSampleRate, 10000.0f, 0.707f, highGain);
 }
 
 void VulcanProcessor::applySaturation(juce::AudioBuffer<float>& buffer, float amount)
@@ -179,34 +180,28 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
         bandBuffers[i].clear();
     }
 
-    // 1. Copy main buffer to Band 0 (Low) and splitBuffer (Mid/High)
     for (int ch = 0; ch < numChannels; ++ch) {
         bandBuffers[0].copyFrom(ch, 0, buffer, ch, 0, numSamples);
         splitBuffer.copyFrom(ch, 0, buffer, ch, 0, numSamples);
     }
 
-    // 2. Process Low Band (Cascaded LP 250Hz)
     juce::dsp::AudioBlock<float> lowBlock(bandBuffers[0]);
     juce::dsp::ProcessContextReplacing<float> lowContext(lowBlock);
     lp250Chain.process(lowContext);
 
-    // 3. Process Mid/High Split (Cascaded HP 250Hz)
     juce::dsp::AudioBlock<float> splitBlock(splitBuffer);
     juce::dsp::ProcessContextReplacing<float> splitContext(splitBlock);
     hp250Chain.process(splitContext);
 
-    // 4. Copy the 250Hz HighPass result to Band 1 (Mid) and Band 2 (High)
     for (int ch = 0; ch < numChannels; ++ch) {
         bandBuffers[1].copyFrom(ch, 0, splitBuffer, ch, 0, numSamples);
         bandBuffers[2].copyFrom(ch, 0, splitBuffer, ch, 0, numSamples);
     }
 
-    // 5. Process Mid Band (Cascaded LP 4000Hz)
     juce::dsp::AudioBlock<float> midBlock(bandBuffers[1]);
     juce::dsp::ProcessContextReplacing<float> midContext(midBlock);
     lp4000Chain.process(midContext);
 
-    // 6. Process High Band (Cascaded HP 4000Hz)
     juce::dsp::AudioBlock<float> highBlock(bandBuffers[2]);
     juce::dsp::ProcessContextReplacing<float> highContext(highBlock);
     hp4000Chain.process(highContext);
