@@ -6,12 +6,12 @@ VulcanProcessor::VulcanProcessor()
                       .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
       apvts (*this, nullptr, "Parameters", createParameterLayout())
 {
-    // Initialize Presets Array
+    // Calibrated Presets for ALMORPH (Hip-Hop / Electronic)
     presets = {
-        { "01. Default / Clean", 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f, 0.0f },
-        { "02. Warm Analog Master", 0.0f, 1.5f, -0.5f, 1.0f, 0.5f, 2.0f, -0.5f },
-        { "03. Punchy Mixbus", 0.0f, 2.0f, 0.0f, 1.5f, 1.2f, 4.0f, -1.0f },
-        { "04. Aggressive Drill", 0.0f, 3.5f, -1.0f, 2.5f, 1.8f, 6.0f, -2.0f }
+        { "01. Default / Clean",   0.0f,  0.0f,  0.0f,  0.0f, 0.0f, 0.0f,  0.0f },
+        { "02. Glue & Punch",      0.0f,  0.5f,  0.0f,  0.5f, 0.3f, 1.5f, -0.5f },
+        { "03. 808 Sub Enhancer",  0.0f,  1.5f, -0.5f,  0.5f, 0.6f, 2.5f, -1.0f },
+        { "04. Drill Aggression",  0.0f,  2.0f,  0.5f,  1.5f, 1.0f, 4.0f, -1.5f }
     };
 }
 
@@ -107,13 +107,23 @@ void VulcanProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     midHighCrossoverHP.setCutoffFrequency(4000.0f);
     midHighCrossoverHP.setType(juce::dsp::LinkwitzRileyFilterType::highpass);
 
-    for (int i = 0; i < 3; ++i)
-    {
-        bandCompressors[i].prepare(spec);
-        bandCompressors[i].setAttack(20.0f);
-        bandCompressors[i].setRelease(120.0f);
-        bandBuffers[i].setSize(getMainBusNumInputChannels(), samplesPerBlock);
-    }
+    // 0: Low Band (<250Hz) - Slow attack to let kicks/808s punch through
+    bandCompressors[0].prepare(spec);
+    bandCompressors[0].setAttack(50.0f); 
+    bandCompressors[0].setRelease(150.0f);
+    bandBuffers[0].setSize(getMainBusNumInputChannels(), samplesPerBlock);
+
+    // 1: Mid Band (250Hz - 4kHz) - Fast attack for vocal/snare consistency
+    bandCompressors[1].prepare(spec);
+    bandCompressors[1].setAttack(15.0f);
+    bandCompressors[1].setRelease(80.0f);
+    bandBuffers[1].setSize(getMainBusNumInputChannels(), samplesPerBlock);
+
+    // 2: High Band (>4kHz) - Very fast attack to catch harsh transients/hi-hats
+    bandCompressors[2].prepare(spec);
+    bandCompressors[2].setAttack(5.0f);
+    bandCompressors[2].setRelease(50.0f);
+    bandBuffers[2].setSize(getMainBusNumInputChannels(), samplesPerBlock);
 
     limiter.prepare(spec);
     limiter.setThreshold(0.0f);
