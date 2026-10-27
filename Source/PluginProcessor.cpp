@@ -6,7 +6,6 @@ VulcanProcessor::VulcanProcessor()
                       .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
       apvts (*this, nullptr, "Parameters", createParameterLayout())
 {
-    // Calibrated Presets for ALMORPH (Hip-Hop / Electronic)
     presets = {
         { "01. Default / Clean",   0.0f,  0.0f,  0.0f,  0.0f, 0.0f, 0.0f,  0.0f },
         { "02. Glue & Punch",      0.0f,  0.5f,  0.0f,  0.5f, 0.3f, 1.5f, -0.5f },
@@ -30,9 +29,6 @@ juce::AudioProcessorValueTreeState::ParameterLayout VulcanProcessor::createParam
     return { params.begin(), params.end() };
 }
 
-// -------------------------------------------------------------------------
-// Preset Functions Implementation (Fixes LNK1120 & LNK2001)
-// -------------------------------------------------------------------------
 int VulcanProcessor::getNumPrograms() { return presets.size(); }
 int VulcanProcessor::getCurrentProgram() { return currentPreset; }
 
@@ -68,9 +64,6 @@ void VulcanProcessor::changeProgramName (int index, const juce::String& newName)
     if (index >= 0 && index < presets.size()) presets[index].name = newName;
 }
 
-// -------------------------------------------------------------------------
-// Core DSP Implementation
-// -------------------------------------------------------------------------
 bool VulcanProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
 {
     if (layouts.getMainOutputChannelSet() != juce::AudioChannelSet::mono() && layouts.getMainOutputChannelSet() != juce::AudioChannelSet::stereo())
@@ -92,22 +85,28 @@ void VulcanProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     preEqChain.prepare(spec);
     updatePreEq();
 
-    lowMidCrossoverLP.prepare(spec);
-    lowMidCrossoverHP.prepare(spec);
-    midHighCrossoverLP.prepare(spec);
-    midHighCrossoverHP.prepare(spec);
+    splitBuffer.setSize(getMainBusNumInputChannels(), samplesPerBlock);
 
-    lowMidCrossoverLP.setCutoffFrequency(250.0f);
-    lowMidCrossoverLP.setType(juce::dsp::LinkwitzRileyFilterType::lowpass);
-    lowMidCrossoverHP.setCutoffFrequency(250.0f);
-    lowMidCrossoverHP.setType(juce::dsp::LinkwitzRileyFilterType::highpass);
+    lp250Chain.prepare(spec);
+    hp250Chain.prepare(spec);
+    lp4000Chain.prepare(spec);
+    hp4000Chain.prepare(spec);
 
-    midHighCrossoverLP.setCutoffFrequency(4000.0f);
-    midHighCrossoverLP.setType(juce::dsp::LinkwitzRileyFilterType::lowpass);
-    midHighCrossoverHP.setCutoffFrequency(4000.0f);
-    midHighCrossoverHP.setType(juce::dsp::LinkwitzRileyFilterType::highpass);
+    // Q=0.7071f corresponds to a Butterworth response. Cascading two gives a dirty Linkwitz-Riley amplitude with phase smear.
+    auto lp250 = juce::dsp::IIR::Coefficients<float>::makeLowPass(currentSampleRate, 250.0f, 0.7071f);
+    auto hp250 = juce::dsp::IIR::Coefficients<float>::makeHighPass(currentSampleRate, 250.0f, 0.7071f);
+    auto lp4000 = juce::dsp::IIR::Coefficients<float>::makeLowPass(currentSampleRate, 4000.0f, 0.7071f);
+    auto hp4000 = juce::dsp::IIR::Coefficients<float>::makeHighPass(currentSampleRate, 4000.0f, 0.7071f);
 
-    // AI Defeat Mode: Transient Smearing across all bands
+    lp250Chain.get<0>().coefficients = lp250;
+    lp250Chain.get<1>().coefficients = lp250;
+    hp250Chain.get<0>().coefficients = hp250;
+    hp250Chain.get<1>().coefficients = hp250;
+    lp4000Chain.get<0>().coefficients = lp4000;
+    lp4000Chain.get<1>().coefficients = lp4000;
+    hp4000Chain.get<0>().coefficients = hp4000;
+    hp4000Chain.get<1>().coefficients = hp4000;
+
     for (int i = 0; i < 3; ++i)
     {
         bandCompressors[i].prepare(spec);
@@ -137,7 +136,6 @@ void VulcanProcessor::updatePreEq()
 
 void VulcanProcessor::applySaturation(juce::AudioBuffer<float>& buffer, float amount)
 {
-    // Restoring the Web App's exact non-linear normalization logic
     float driveFactor = 1.0f + (amount * 1.5f);
     float drive = juce::jmax(0.1f, driveFactor);
     float norm = std::tanh(drive);
@@ -181,26 +179,37 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
         bandBuffers[i].clear();
     }
 
-    for (int ch = 0; ch < numChannels; ++ch)
-    {
-        const float* src = buffer.getReadPointer(ch);
-        float* lowPtr = bandBuffers[0].getWritePointer(ch);
-        float* midPtr = bandBuffers[1].getWritePointer(ch);
-        float* highPtr = bandBuffers[2].getWritePointer(ch);
-
-        for (int s = 0; s < numSamples; ++s)
-        {
-            float inputSample = src[s];
-            float lowPart = lowMidCrossoverLP.processSample(ch, inputSample);
-            float highPart = lowMidCrossoverHP.processSample(ch, inputSample);
-            float midPart = midHighCrossoverLP.processSample(ch, highPart);
-            float highFinal = midHighCrossoverHP.processSample(ch, highPart);
-
-            lowPtr[s] = lowPart;
-            midPtr[s] = midPart;
-            highPtr[s] = highFinal;
-        }
+    // 1. Copy main buffer to Band 0 (Low) and splitBuffer (Mid/High)
+    for (int ch = 0; ch < numChannels; ++ch) {
+        bandBuffers[0].copyFrom(ch, 0, buffer, ch, 0, numSamples);
+        splitBuffer.copyFrom(ch, 0, buffer, ch, 0, numSamples);
     }
+
+    // 2. Process Low Band (Cascaded LP 250Hz)
+    juce::dsp::AudioBlock<float> lowBlock(bandBuffers[0]);
+    juce::dsp::ProcessContextReplacing<float> lowContext(lowBlock);
+    lp250Chain.process(lowContext);
+
+    // 3. Process Mid/High Split (Cascaded HP 250Hz)
+    juce::dsp::AudioBlock<float> splitBlock(splitBuffer);
+    juce::dsp::ProcessContextReplacing<float> splitContext(splitBlock);
+    hp250Chain.process(splitContext);
+
+    // 4. Copy the 250Hz HighPass result to Band 1 (Mid) and Band 2 (High)
+    for (int ch = 0; ch < numChannels; ++ch) {
+        bandBuffers[1].copyFrom(ch, 0, splitBuffer, ch, 0, numSamples);
+        bandBuffers[2].copyFrom(ch, 0, splitBuffer, ch, 0, numSamples);
+    }
+
+    // 5. Process Mid Band (Cascaded LP 4000Hz)
+    juce::dsp::AudioBlock<float> midBlock(bandBuffers[1]);
+    juce::dsp::ProcessContextReplacing<float> midContext(midBlock);
+    lp4000Chain.process(midContext);
+
+    // 6. Process High Band (Cascaded HP 4000Hz)
+    juce::dsp::AudioBlock<float> highBlock(bandBuffers[2]);
+    juce::dsp::ProcessContextReplacing<float> highContext(highBlock);
+    hp4000Chain.process(highContext);
 
     buffer.clear();
     for (int i = 0; i < 3; ++i)
