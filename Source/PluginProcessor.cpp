@@ -117,7 +117,9 @@ void VulcanProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     }
 
     limiter.prepare(spec);
-    limiter.setThreshold(0.0f);
+    limiter.setThreshold(-0.1f);
+    limiter.setRatio(20.0f);
+    limiter.setAttack(1.0f); // 1ms attack, επιτρέπει το κρυφό clipping του browser
     limiter.setRelease(50.0f);
     outputGainModule.prepare(spec);
 }
@@ -140,6 +142,16 @@ void VulcanProcessor::applySaturation(juce::AudioBuffer<float>& buffer, float am
     float driveFactor = 1.0f + (amount * 1.5f);
     float drive = juce::jmax(0.1f, driveFactor);
     float norm = std::tanh(drive);
+    
+    // WebAudio 2048-point Float32Array Lookup Table Emulation
+    const int lutSize = 2048;
+    std::vector<float> curve(lutSize);
+    for (int i = 0; i < lutSize; ++i)
+    {
+        float x = (i * 2.0f) / (lutSize - 1.0f) - 1.0f;
+        curve[i] = std::tanh(x * drive) / norm;
+    }
+
     const int numChannels = buffer.getNumChannels();
     const int numSamples = buffer.getNumSamples();
 
@@ -148,7 +160,15 @@ void VulcanProcessor::applySaturation(juce::AudioBuffer<float>& buffer, float am
         float* samples = buffer.getWritePointer(channel);
         for (int i = 0; i < numSamples; ++i)
         {
-            samples[i] = std::tanh(samples[i] * drive) / norm;
+            // WebAudio WaveShaper linear interpolation
+            float input = juce::jlimit(-1.0f, 1.0f, samples[i]);
+            float indexFloat = (input + 1.0f) * 0.5f * (lutSize - 1);
+            
+            int idx1 = static_cast<int>(indexFloat);
+            int idx2 = juce::jmin(idx1 + 1, lutSize - 1);
+            float frac = indexFloat - static_cast<float>(idx1);
+
+            samples[i] = curve[idx1] + frac * (curve[idx2] - curve[idx1]);
         }
     }
 }
