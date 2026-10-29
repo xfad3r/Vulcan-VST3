@@ -90,8 +90,10 @@ void VulcanProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 
     updatePreEq(); 
     
-    pinkState[0] = 0.0f;
-    pinkState[1] = 0.0f;
+    // Αρχικοποίηση High-Band Chaos All-Pass
+    highBandPhaseCurrent = 10000.0f;
+    highBandAllPass.state = juce::dsp::IIR::Coefficients<float>::makeAllPass(currentSampleRate, highBandPhaseCurrent);
+    highBandAllPass.prepare(spec);
 
     auto lp250 = juce::dsp::IIR::Coefficients<float>::makeLowPass(currentSampleRate, 250.0f, 0.7071f);
     auto hp250 = juce::dsp::IIR::Coefficients<float>::makeHighPass(currentSampleRate, 250.0f, 0.7071f);
@@ -210,12 +212,20 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
 
     buffer.clear();
     
-    // Core Engine Execution (Multiband Saturation)
     for (int i = 0; i < 3; ++i)
     {
         juce::dsp::AudioBlock<float> bandBlock(bandBuffers[i]);
         juce::dsp::ProcessContextReplacing<float> bandContext(bandBlock);
         
+        // Στοχευμένη καταστροφή ΜΟΝΟ στο High Band (>4000Hz)
+        if (i == 2 && currentSampleRate > 0.0) {
+            // Chaotic Phase Smearing: Τυχαίος στόχος (5kHz - 15kHz) εξομαλυμένος
+            float randomTarget = 5000.0f + (juce::Random::getSystemRandom().nextFloat() * 10000.0f);
+            highBandPhaseCurrent = (0.95f * highBandPhaseCurrent) + (0.05f * randomTarget);
+            highBandAllPass.state = juce::dsp::IIR::Coefficients<float>::makeAllPass(currentSampleRate, highBandPhaseCurrent);
+            highBandAllPass.process(bandContext);
+        }
+
         bandCompressors[i].process(bandContext);
         
         auto oversampledBlock = oversamplers[i]->processSamplesUp(bandBlock);
@@ -235,27 +245,22 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
         
         oversamplers[i]->processSamplesDown(bandBlock);
 
+        // Επιθετικό TPDF Dither ΜΟΝΟ στο High Band
+        if (i == 2) {
+            for (size_t ch = 0; ch < bandBlock.getNumChannels(); ++ch) {
+                float* ptr = bandBlock.getChannelPointer(ch);
+                for (size_t s = 0; s < bandBlock.getNumSamples(); ++s) {
+                    float r1 = juce::Random::getSystemRandom().nextFloat();
+                    float r2 = juce::Random::getSystemRandom().nextFloat();
+                    ptr[s] += (r1 - r2) * 0.015f; // Περίπου -36dB θορύβου
+                }
+            }
+        }
+
         for (int ch = 0; ch < numChannels; ++ch)
             buffer.addFrom(ch, 0, bandBuffers[i], ch, 0, numSamples);
     }
 
-    // --- DYNAMIC NOISE GLUE (Pre-Limiter Injection) ---
-    // Ανεβάζουμε την ένταση στα -65dB και περνάμε τον θόρυβο ΠΡΙΝ το Limiter.
-    float noiseAmp = juce::Decibels::decibelsToGain(-65.0f);
-    for (int ch = 0; ch < numChannels; ++ch)
-    {
-        float* channelData = buffer.getWritePointer(ch);
-        for (int s = 0; s < numSamples; ++s)
-        {
-            float white = (juce::Random::getSystemRandom().nextFloat() * 2.0f) - 1.0f;
-            pinkState[ch] = 0.99f * pinkState[ch] + 0.05f * white;
-            
-            // Ο θόρυβος μιξάρεται με το ηχητικό σήμα 
-            channelData[s] += (pinkState[ch] * noiseAmp);
-        }
-    }
-
-    // Το Limiter τώρα θα συμπιέζει ΚΑΙ τον θόρυβο, προκαλώντας ρυθμικό pumping
     float limiterDrive = juce::Decibels::decibelsToGain(apvts.getRawParameterValue("limiter_drive")->load());
     buffer.applyGain(limiterDrive);
     limiter.process(context);
