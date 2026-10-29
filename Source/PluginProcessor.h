@@ -50,6 +50,12 @@ private:
 
     juce::dsp::ProcessorChain<StereoBiquad, StereoBiquad, StereoBiquad> preEqChain;
 
+    // 1. All-Pass Phase Scrambler (Psychoacoustic Hacking)
+    juce::dsp::ProcessorDuplicator<FilterMono, FilterCoef> allPassScrambler;
+
+    // 2. State memory for 1-Pole High-Pass TPDF Dither
+    float ditherZ1[2] = { 0.0f, 0.0f };
+
     juce::dsp::ProcessorChain<StereoBiquad, StereoBiquad> lp250Chain;
     juce::dsp::ProcessorChain<StereoBiquad, StereoBiquad> hp250Chain;
     juce::dsp::ProcessorChain<StereoBiquad, StereoBiquad> lp4000Chain;
