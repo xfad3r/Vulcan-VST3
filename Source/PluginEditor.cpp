@@ -4,7 +4,6 @@
 VulcanEditor::VulcanEditor (VulcanProcessor& p)
     : AudioProcessorEditor (&p), audioProcessor (p)
 {
-    // Αυξήσαμε το πλάτος στα 820px για να χωρέσουν και τα 7 knobs με σωστό padding
     setSize (820, 350);
 
     setupRotarySlider(inputGainSlider, inputGainAttach, "input_gain");
@@ -45,7 +44,6 @@ void VulcanEditor::paint (juce::Graphics& g)
     g.setColour (juce::Colour(0xFF555555));
     g.setFont (12.0f);
     
-    // Κεντραρισμένες ετικέτες με βάση τα νέα, διευρυμένα X coordinates
     g.drawText("INPUT GAIN", 50,  120, 100, 20, juce::Justification::centred);
     g.drawText("EQ LOW",     150, 120, 100, 20, juce::Justification::centred);
     g.drawText("EQ MID",     250, 120, 100, 20, juce::Justification::centred);
@@ -64,13 +62,11 @@ void VulcanEditor::resized()
     const int knobSize = 80;
     const int startY = 150;
     
-    // Απόλυτα συμμετρική τοποθέτηση με περιθώριο 60px δεξιά/αριστερά
     inputGainSlider.setBounds(60,  startY, knobSize, knobSize);
     eqLowSlider.setBounds    (160, startY, knobSize, knobSize);
     eqMidSlider.setBounds    (260, startY, knobSize, knobSize);
     eqHighSlider.setBounds   (360, startY, knobSize, knobSize);
     
-    // Το κεντρικό Amount Knob (100px)
     amountSlider.setBounds   (465, startY - 10, 100, 100);
     
     limitDriveSlider.setBounds(580, startY, knobSize, knobSize);
