@@ -62,14 +62,14 @@ private:
     std::array<juce::dsp::Compressor<float>, 3> bandCompressors;
     juce::AudioBuffer<float> bandBuffers[3];
 
-    // Επαναφορά του Oversampling
     std::array<std::unique_ptr<juce::dsp::Oversampling<float>>, 3> oversamplers;
 
     juce::dsp::Compressor<float> limiter;
     juce::dsp::Gain<float> outputGainModule;
     
-    // Μνήμη για το Pink Noise Filter
-    float pinkState[2] = { 0.0f, 0.0f };
+    // High-Band Chaos Engine
+    juce::dsp::ProcessorDuplicator<FilterMono, FilterCoef> highBandAllPass;
+    float highBandPhaseCurrent = 10000.0f;
 
     double currentSampleRate = 44100.0;
     void updatePreEq();
