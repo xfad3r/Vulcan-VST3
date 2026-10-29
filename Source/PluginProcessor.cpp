@@ -14,7 +14,6 @@ VulcanProcessor::VulcanProcessor()
         { "04. Drill Aggression",  0.0f,  2.0f,  0.5f,  1.5f, 1.0f, 4.0f, -1.5f }
     };
 
-    // Επαναφορά του 4x Polyphase Oversampling
     for (int i = 0; i < 3; ++i) {
         oversamplers[i] = std::make_unique<juce::dsp::Oversampling<float>>(
             2, 2, juce::dsp::Oversampling<float>::filterHalfBandPolyphaseIIR, true
@@ -211,7 +210,7 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
 
     buffer.clear();
     
-    // Core Engine Execution (Με Oversampling)
+    // Core Engine Execution (Multiband Saturation)
     for (int i = 0; i < 3; ++i)
     {
         juce::dsp::AudioBlock<float> bandBlock(bandBuffers[i]);
@@ -240,6 +239,23 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
             buffer.addFrom(ch, 0, bandBuffers[i], ch, 0, numSamples);
     }
 
+    // --- DYNAMIC NOISE GLUE (Pre-Limiter Injection) ---
+    // Ανεβάζουμε την ένταση στα -65dB και περνάμε τον θόρυβο ΠΡΙΝ το Limiter.
+    float noiseAmp = juce::Decibels::decibelsToGain(-65.0f);
+    for (int ch = 0; ch < numChannels; ++ch)
+    {
+        float* channelData = buffer.getWritePointer(ch);
+        for (int s = 0; s < numSamples; ++s)
+        {
+            float white = (juce::Random::getSystemRandom().nextFloat() * 2.0f) - 1.0f;
+            pinkState[ch] = 0.99f * pinkState[ch] + 0.05f * white;
+            
+            // Ο θόρυβος μιξάρεται με το ηχητικό σήμα 
+            channelData[s] += (pinkState[ch] * noiseAmp);
+        }
+    }
+
+    // Το Limiter τώρα θα συμπιέζει ΚΑΙ τον θόρυβο, προκαλώντας ρυθμικό pumping
     float limiterDrive = juce::Decibels::decibelsToGain(apvts.getRawParameterValue("limiter_drive")->load());
     buffer.applyGain(limiterDrive);
     limiter.process(context);
@@ -247,24 +263,13 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
     outputGainModule.setGainDecibels(apvts.getRawParameterValue("output_gain")->load());
     outputGainModule.process(context);
 
-    // Pink Noise Injection (-75dB) + 16-Bit PCM Truncation
-    float noiseAmp = juce::Decibels::decibelsToGain(-75.0f);
+    // Ωμό 16-Bit PCM Truncation
     for (int ch = 0; ch < numChannels; ++ch)
     {
         float* channelData = buffer.getWritePointer(ch);
         for (int s = 0; s < numSamples; ++s)
         {
-            // Δημιουργία White Noise (-1.0 έως 1.0)
-            float white = (juce::Random::getSystemRandom().nextFloat() * 2.0f) - 1.0f;
-            
-            // Μετατροπή σε Pink Noise (1-pole low pass filter)
-            pinkState[ch] = 0.99f * pinkState[ch] + 0.05f * white;
-            
-            // Μίξη Pink Noise (-75dB)
-            float sample = channelData[s] + (pinkState[ch] * noiseAmp);
-            
-            // Ωμό 16-bit Truncation
-            sample = juce::jlimit(-1.0f, 1.0f, sample);
+            float sample = juce::jlimit(-1.0f, 1.0f, channelData[s]);
             int pcm16 = static_cast<int>(sample * 32767.0f);
             channelData[s] = static_cast<float>(pcm16) / 32767.0f;
         }
