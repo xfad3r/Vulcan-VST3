@@ -2,21 +2,20 @@
 #include <JuceHeader.h>
 #include "PluginProcessor.h"
 
-// Custom LookAndFeel για το "Vulcan Magma" Theme
 class VulcanLookAndFeel : public juce::LookAndFeel_V4
 {
 public:
     VulcanLookAndFeel()
     {
-        setColour(juce::Slider::rotarySliderFillColourId, juce::Colour(0xFFF59E0B)); // Amber
-        setColour(juce::Slider::rotarySliderOutlineColourId, juce::Colour(0xFF180E0A)); // Dark Panel
+        setColour(juce::Slider::rotarySliderFillColourId, juce::Colour(0xFFF59E0B)); 
+        setColour(juce::Slider::rotarySliderOutlineColourId, juce::Colour(0xFF180E0A)); 
         setColour(juce::Slider::thumbColourId, juce::Colour(0xFFF59E0B));
     }
 
     void drawRotarySlider (juce::Graphics& g, int x, int y, int width, int height, float sliderPos,
                            const float rotaryStartAngle, const float rotaryEndAngle, juce::Slider& slider) override
     {
-        juce::ignoreUnused(slider); // Εξάλειψη του warning C4100
+        juce::ignoreUnused(slider);
 
         auto radius = (float) juce::jmin (width / 2, height / 2) - 4.0f;
         auto centreX = (float) x + (float) width  * 0.5f;
@@ -26,19 +25,16 @@ public:
         auto rw = radius * 2.0f;
         auto angle = rotaryStartAngle + sliderPos * (rotaryEndAngle - rotaryStartAngle);
 
-        // Σώμα του Knob
         g.setColour (juce::Colour(0xFF111111));
         g.fillEllipse (rx, ry, rw, rw);
         g.setColour (juce::Colour(0xFF333333));
         g.drawEllipse (rx, ry, rw, rw, 1.5f);
 
-        // Τόξο τιμής (Amber Glow)
         juce::Path filledArc;
         filledArc.addPieSegment (rx, ry, rw, rw, rotaryStartAngle, angle, 0.6f);
         g.setColour (findColour (juce::Slider::rotarySliderFillColourId));
         g.fillPath (filledArc);
 
-        // Δείκτης (Pointer)
         juce::Path p;
         auto pointerLength = radius * 0.33f;
         auto pointerThickness = 3.0f;
