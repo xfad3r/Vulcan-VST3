@@ -1,5 +1,5 @@
 #include "PluginProcessor.h"
-#include "PluginEditor.h"
+#include "PluginEditor.h" // Σύνδεση με το Custom UI
 
 VulcanProcessor::VulcanProcessor()
     : AudioProcessor (BusesProperties()
@@ -91,7 +91,7 @@ void VulcanProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 
     updatePreEq(); 
 
-    // All-Pass Scrambler initialization (Flip phase at 2.5kHz to destroy AI vocoder coherence)
+    // All-Pass Scrambler initialization
     allPassScrambler.state = juce::dsp::IIR::Coefficients<float>::makeAllPass(currentSampleRate, 2500.0f);
     allPassScrambler.prepare(spec);
 
@@ -129,7 +129,6 @@ void VulcanProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
         bandCompressors[i].setRelease(120.0f);
         bandBuffers[i].setSize(getMainBusNumInputChannels(), samplesPerBlock);
         
-        // Prepare internal Oversampler buffers
         oversamplers[i]->initProcessing(samplesPerBlock);
         oversamplers[i]->reset();
     }
@@ -220,7 +219,7 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
 
     buffer.clear();
     
-    // Core Engine Execution: Comp -> 4x Oversample (IIR) -> Inline Saturate -> Anti-Alias Downsample -> Sum
+    // Core Engine Execution
     for (int i = 0; i < 3; ++i)
     {
         juce::dsp::AudioBlock<float> bandBlock(bandBuffers[i]);
@@ -249,52 +248,4 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
             buffer.addFrom(ch, 0, bandBuffers[i], ch, 0, numSamples);
     }
 
-    float limiterDrive = juce::Decibels::decibelsToGain(apvts.getRawParameterValue("limiter_drive")->load());
-    buffer.applyGain(limiterDrive);
-    limiter.process(context);
-
-    outputGainModule.setGainDecibels(apvts.getRawParameterValue("output_gain")->load());
-    outputGainModule.process(context);
-
-    // High-Passed TPDF Dither & Quantization Noise Emulation
-    for (int ch = 0; ch < numChannels; ++ch)
-    {
-        float* channelData = buffer.getWritePointer(ch);
-        for (int s = 0; s < numSamples; ++s)
-        {
-            float r1 = juce::Random::getSystemRandom().nextFloat();
-            float r2 = juce::Random::getSystemRandom().nextFloat();
-            float tpdf = (r1 - r2); 
-
-            float hpDither = tpdf - ditherZ1[ch];
-            ditherZ1[ch] = tpdf;
-
-            hpDither *= 0.0000305f; 
-
-            float sample = juce::jlimit(-1.0f, 1.0f, channelData[s] + hpDither);
-            int pcm16 = static_cast<int>(sample * 32767.0f);
-            
-            channelData[s] = static_cast<float>(pcm16) / 32767.0f;
-        }
-    }
-}
-
-void VulcanProcessor::getStateInformation (juce::MemoryBlock& destData)
-{
-    auto state = apvts.copyState();
-    std::unique_ptr<juce::XmlElement> xml (state.createXml());
-    copyXmlToBinary (*xml, destData);
-}
-
-void VulcanProcessor::setStateInformation (const void* data, int sizeInBytes)
-{
-    std::unique_ptr<juce::XmlElement> xmlState (getXmlFromBinary (data, sizeInBytes));
-    if (xmlState != nullptr)
-        if (xmlState->hasTagName (apvts.state.getType()))
-            apvts.replaceState (juce::ValueTree::fromXml (*xmlState));
-}
-
-juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
-{
-    return new VulcanProcessor();
-}
+    float limiterDrive = juce::Decibels::decibelsToGain
