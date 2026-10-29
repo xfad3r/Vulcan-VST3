@@ -41,7 +41,9 @@ void VulcanEditor::paint (juce::Graphics& g)
     
     g.setColour (juce::Colour(0xFFF59E0B));
     g.setFont (24.0f);
-    g.setFont (g.getFont().withStyle(juce::Font::bold));
+    
+    // Επίλυση του Error C2039: Χρήση getCurrentFont()
+    g.setFont (g.getCurrentFont().withStyle(juce::Font::bold));
     g.drawFittedText ("VULCAN MASTERING CONSOLE", getLocalBounds().withTrimmedTop(20), juce::Justification::centredTop, 1);
     
     g.setColour (juce::Colour(0xFF555555));
@@ -66,7 +68,6 @@ void VulcanEditor::resized()
     // Τοποθέτηση των Knobs στον καμβά
     const int knobSize = 80;
     const int startY = 150;
-    const int spacing = 100;
     
     inputGainSlider.setBounds(50, startY, knobSize, knobSize);
     eqLowSlider.setBounds(150, startY, knobSize, knobSize);
