@@ -1,6 +1,5 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
-#include <cmath>
 
 VulcanProcessor::VulcanProcessor()
     : AudioProcessor (BusesProperties()
@@ -14,12 +13,7 @@ VulcanProcessor::VulcanProcessor()
         { "03. 808 Sub Enhancer",  0.0f,  1.5f, -0.5f,  0.5f, 0.6f, 2.5f, -1.0f },
         { "04. Drill Aggression",  0.0f,  2.0f,  0.5f,  1.5f, 1.0f, 4.0f, -1.5f }
     };
-
-    for (int i = 0; i < 3; ++i) {
-        oversamplers[i] = std::make_unique<juce::dsp::Oversampling<float>>(
-            2, 2, juce::dsp::Oversampling<float>::filterHalfBandPolyphaseIIR, true
-        );
-    }
+    // Αφαιρέθηκε το initialization του oversampler
 }
 
 VulcanProcessor::~VulcanProcessor() {}
@@ -91,11 +85,6 @@ void VulcanProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 
     updatePreEq(); 
 
-    // Αρχικοποίηση LFO και All-Pass 
-    lfoPhase = 0.0f;
-    allPassScrambler.state = juce::dsp::IIR::Coefficients<float>::makeAllPass(currentSampleRate, 2500.0f);
-    allPassScrambler.prepare(spec);
-
     auto lp250 = juce::dsp::IIR::Coefficients<float>::makeLowPass(currentSampleRate, 250.0f, 0.7071f);
     auto hp250 = juce::dsp::IIR::Coefficients<float>::makeHighPass(currentSampleRate, 250.0f, 0.7071f);
     auto lp4000 = juce::dsp::IIR::Coefficients<float>::makeLowPass(currentSampleRate, 4000.0f, 0.7071f);
@@ -125,9 +114,6 @@ void VulcanProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
         bandCompressors[i].setAttack(20.0f);
         bandCompressors[i].setRelease(120.0f);
         bandBuffers[i].setSize(getMainBusNumInputChannels(), samplesPerBlock);
-        
-        oversamplers[i]->initProcessing(samplesPerBlock);
-        oversamplers[i]->reset();
     }
 
     limiter.prepare(spec);
@@ -139,11 +125,7 @@ void VulcanProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     outputGainModule.prepare(spec);
 }
 
-void VulcanProcessor::releaseResources()
-{
-    for (int i = 0; i < 3; ++i)
-        oversamplers[i]->reset();
-}
+void VulcanProcessor::releaseResources() {}
 
 void VulcanProcessor::updatePreEq()
 {
@@ -172,18 +154,6 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
     inputGainModule.process(context);
     updatePreEq();
     preEqChain.process(context);
-
-    // Chaos Engine: LFO Modulated Phase Drift (0.2 Hz)
-    if (currentSampleRate > 0.0) {
-        lfoPhase += 0.2f * ((float)numSamples / (float)currentSampleRate);
-        if (lfoPhase > 1.0f) lfoPhase -= 1.0f;
-        float lfoVal = std::sin(juce::MathConstants<float>::twoPi * lfoPhase);
-        
-        // Η συχνότητα του All-Pass γλιστράει διαρκώς από 1000Hz έως 4000Hz
-        float currentApFreq = 2500.0f + (lfoVal * 1500.0f); 
-        allPassScrambler.state = juce::dsp::IIR::Coefficients<float>::makeAllPass(currentSampleRate, currentApFreq);
-    }
-    allPassScrambler.process(context);
 
     float amount = apvts.getRawParameterValue("amount")->load();
     float thresholdDb = (amount <= 0.001f) ? 0.0f : (-6.0f - (amount * 10.0f));
@@ -225,7 +195,7 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
 
     buffer.clear();
     
-    // Core Engine Execution
+    // Core Engine Execution (Χωρίς Oversampling - Aliasing Foldback)
     for (int i = 0; i < 3; ++i)
     {
         juce::dsp::AudioBlock<float> bandBlock(bandBuffers[i]);
@@ -233,28 +203,19 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
         
         bandCompressors[i].process(bandContext);
         
-        auto oversampledBlock = oversamplers[i]->processSamplesUp(bandBlock);
-        
         const float driveFactor = 1.0f + (amount * 1.5f);
         const float drive = juce::jmax(0.1f, driveFactor);
-        
-        // Υπολογισμός Asymmetric Normalization
-        const float baseNorm = std::tanh(drive);
-        const float norm = baseNorm + (0.05f * baseNorm * baseNorm);
+        const float norm = std::tanh(drive);
 
-        for (size_t ch = 0; ch < oversampledBlock.getNumChannels(); ++ch)
+        for (size_t ch = 0; ch < bandBlock.getNumChannels(); ++ch)
         {
-            float* ptr = oversampledBlock.getChannelPointer(ch);
-            for (size_t s = 0; s < oversampledBlock.getNumSamples(); ++s)
+            float* ptr = bandBlock.getChannelPointer(ch);
+            for (size_t s = 0; s < bandBlock.getNumSamples(); ++s)
             {
-                // Chaos Engine: Asymmetric Tube Saturation (2nd Order Harmonics injection)
-                float sat = std::tanh(ptr[s] * drive);
-                ptr[s] = (sat + 0.05f * sat * sat) / norm;
+                ptr[s] = std::tanh(ptr[s] * drive) / norm;
             }
         }
         
-        oversamplers[i]->processSamplesDown(bandBlock);
-
         for (int ch = 0; ch < numChannels; ++ch)
             buffer.addFrom(ch, 0, bandBuffers[i], ch, 0, numSamples);
     }
