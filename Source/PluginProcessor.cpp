@@ -1,4 +1,5 @@
 #include "PluginProcessor.h"
+#include "PluginEditor.h"
 
 VulcanProcessor::VulcanProcessor()
     : AudioProcessor (BusesProperties()
