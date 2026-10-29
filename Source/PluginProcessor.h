@@ -52,6 +52,10 @@ private:
 
     juce::dsp::ProcessorChain<StereoBiquad, StereoBiquad, StereoBiquad> preEqChain;
 
+    // Προσθήκη δυναμικού All-Pass Scrambler και μεταβλητής LFO
+    juce::dsp::ProcessorDuplicator<FilterMono, FilterCoef> allPassScrambler;
+    float lfoPhase = 0.0f;
+
     juce::dsp::ProcessorChain<StereoBiquad, StereoBiquad> lp250Chain;
     juce::dsp::ProcessorChain<StereoBiquad, StereoBiquad> hp250Chain;
     juce::dsp::ProcessorChain<StereoBiquad, StereoBiquad> lp4000Chain;
