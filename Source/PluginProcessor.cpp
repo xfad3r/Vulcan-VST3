@@ -1,5 +1,5 @@
 #include "PluginProcessor.h"
-#include "PluginEditor.h" // Σύνδεση με το Custom UI
+#include "PluginEditor.h"
 
 VulcanProcessor::VulcanProcessor()
     : AudioProcessor (BusesProperties()
@@ -14,7 +14,6 @@ VulcanProcessor::VulcanProcessor()
         { "04. Drill Aggression",  0.0f,  2.0f,  0.5f,  1.5f, 1.0f, 4.0f, -1.5f }
     };
 
-    // Initialize 4x Oversampling (Factor 2 = 2^2 = 4x) using PolyphaseIIR
     for (int i = 0; i < 3; ++i) {
         oversamplers[i] = std::make_unique<juce::dsp::Oversampling<float>>(
             2, 2, juce::dsp::Oversampling<float>::filterHalfBandPolyphaseIIR, true
@@ -37,7 +36,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout VulcanProcessor::createParam
     return { params.begin(), params.end() };
 }
 
-int VulcanProcessor::getNumPrograms() { return presets.size(); }
+int VulcanProcessor::getNumPrograms() { return static_cast<int>(presets.size()); }
 int VulcanProcessor::getCurrentProgram() { return currentPreset; }
 
 void VulcanProcessor::setCurrentProgram (int index)
@@ -90,14 +89,6 @@ void VulcanProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     spec.numChannels = static_cast<juce::uint32> (getMainBusNumInputChannels());
 
     updatePreEq(); 
-
-    // All-Pass Scrambler initialization
-    allPassScrambler.state = juce::dsp::IIR::Coefficients<float>::makeAllPass(currentSampleRate, 2500.0f);
-    allPassScrambler.prepare(spec);
-
-    // Reset dither memory
-    ditherZ1[0] = 0.0f;
-    ditherZ1[1] = 0.0f;
 
     auto lp250 = juce::dsp::IIR::Coefficients<float>::makeLowPass(currentSampleRate, 250.0f, 0.7071f);
     auto hp250 = juce::dsp::IIR::Coefficients<float>::makeHighPass(currentSampleRate, 250.0f, 0.7071f);
@@ -176,9 +167,6 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
     updatePreEq();
     preEqChain.process(context);
 
-    // Apply Phase Scrambling early in the chain
-    allPassScrambler.process(context);
-
     float amount = apvts.getRawParameterValue("amount")->load();
     float thresholdDb = (amount <= 0.001f) ? 0.0f : (-6.0f - (amount * 10.0f));
     float ratio = 1.0f + (amount * 1.75f);
@@ -219,7 +207,6 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
 
     buffer.clear();
     
-    // Core Engine Execution
     for (int i = 0; i < 3; ++i)
     {
         juce::dsp::AudioBlock<float> bandBlock(bandBuffers[i]);
@@ -248,4 +235,46 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
             buffer.addFrom(ch, 0, bandBuffers[i], ch, 0, numSamples);
     }
 
-    float limiterDrive = juce::Decibels::decibelsToGain
+    float limiterDrive = juce::Decibels::decibelsToGain(apvts.getRawParameterValue("limiter_drive")->load());
+    buffer.applyGain(limiterDrive);
+    limiter.process(context);
+
+    outputGainModule.setGainDecibels(apvts.getRawParameterValue("output_gain")->load());
+    outputGainModule.process(context);
+
+    for (int ch = 0; ch < numChannels; ++ch)
+    {
+        float* channelData = buffer.getWritePointer(ch);
+        for (int s = 0; s < numSamples; ++s)
+        {
+            float sample = juce::jlimit(-1.0f, 1.0f, channelData[s]);
+            int pcm16 = static_cast<int>(sample * 32767.0f);
+            channelData[s] = static_cast<float>(pcm16) / 32767.0f;
+        }
+    }
+}
+
+void VulcanProcessor::getStateInformation (juce::MemoryBlock& destData)
+{
+    auto state = apvts.copyState();
+    std::unique_ptr<juce::XmlElement> xml (state.createXml());
+    copyXmlToBinary (*xml, destData);
+}
+
+void VulcanProcessor::setStateInformation (const void* data, int sizeInBytes)
+{
+    std::unique_ptr<juce::XmlElement> xmlState (getXmlFromBinary (data, sizeInBytes));
+    if (xmlState != nullptr)
+        if (xmlState->hasTagName (apvts.state.getType()))
+            apvts.replaceState (juce::ValueTree::fromXml (*xmlState));
+}
+
+juce::AudioProcessorEditor* VulcanProcessor::createEditor()
+{
+    return new VulcanEditor(*this);
+}
+
+juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
+{
+    return new VulcanProcessor();
+}
