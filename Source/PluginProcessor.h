@@ -17,7 +17,8 @@ public:
     bool isBusesLayoutSupported (const BusesLayout& layouts) const override;
     void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
 
-    juce::AudioProcessorEditor* createEditor() override { return new juce::GenericAudioProcessorEditor (*this); }
+    // Εδώ τώρα μόνο δηλώνουμε το Editor, δεν το κατασκευάζουμε inline
+    juce::AudioProcessorEditor* createEditor() override;
     bool hasEditor() const override { return true; }
 
     const juce::String getName() const override { return "VULCAN by DJSmartie"; }
@@ -34,6 +35,9 @@ public:
 
     void getStateInformation (juce::MemoryBlock& destData) override;
     void setStateInformation (const void* data, int sizeInBytes) override;
+
+    // Γέφυρα για να μπορεί το GUI (PluginEditor) να βλέπει τις παραμέτρους
+    juce::AudioProcessorValueTreeState& getAPVTS() { return apvts; }
 
 private:
     juce::AudioProcessorValueTreeState apvts;
