@@ -30,6 +30,8 @@ target_sources(VulcanByDJSmartie
     PRIVATE
         Source/PluginProcessor.cpp
         Source/PluginProcessor.h
+        Source/PluginEditor.cpp
+        Source/PluginEditor.h
 )
 
 target_compile_definitions(VulcanByDJSmartie
