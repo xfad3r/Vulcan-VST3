@@ -13,7 +13,13 @@ VulcanProcessor::VulcanProcessor()
         { "03. 808 Sub Enhancer",  0.0f,  1.5f, -0.5f,  0.5f, 0.6f, 2.5f, -1.0f },
         { "04. Drill Aggression",  0.0f,  2.0f,  0.5f,  1.5f, 1.0f, 4.0f, -1.5f }
     };
-    // Αφαιρέθηκε το initialization του oversampler
+
+    // Επαναφορά του 4x Polyphase Oversampling
+    for (int i = 0; i < 3; ++i) {
+        oversamplers[i] = std::make_unique<juce::dsp::Oversampling<float>>(
+            2, 2, juce::dsp::Oversampling<float>::filterHalfBandPolyphaseIIR, true
+        );
+    }
 }
 
 VulcanProcessor::~VulcanProcessor() {}
@@ -84,6 +90,9 @@ void VulcanProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     spec.numChannels = static_cast<juce::uint32> (getMainBusNumInputChannels());
 
     updatePreEq(); 
+    
+    pinkState[0] = 0.0f;
+    pinkState[1] = 0.0f;
 
     auto lp250 = juce::dsp::IIR::Coefficients<float>::makeLowPass(currentSampleRate, 250.0f, 0.7071f);
     auto hp250 = juce::dsp::IIR::Coefficients<float>::makeHighPass(currentSampleRate, 250.0f, 0.7071f);
@@ -114,6 +123,9 @@ void VulcanProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
         bandCompressors[i].setAttack(20.0f);
         bandCompressors[i].setRelease(120.0f);
         bandBuffers[i].setSize(getMainBusNumInputChannels(), samplesPerBlock);
+        
+        oversamplers[i]->initProcessing(samplesPerBlock);
+        oversamplers[i]->reset();
     }
 
     limiter.prepare(spec);
@@ -125,7 +137,11 @@ void VulcanProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     outputGainModule.prepare(spec);
 }
 
-void VulcanProcessor::releaseResources() {}
+void VulcanProcessor::releaseResources()
+{
+    for (int i = 0; i < 3; ++i)
+        oversamplers[i]->reset();
+}
 
 void VulcanProcessor::updatePreEq()
 {
@@ -195,7 +211,7 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
 
     buffer.clear();
     
-    // Core Engine Execution (Χωρίς Oversampling - Aliasing Foldback)
+    // Core Engine Execution (Με Oversampling)
     for (int i = 0; i < 3; ++i)
     {
         juce::dsp::AudioBlock<float> bandBlock(bandBuffers[i]);
@@ -203,19 +219,23 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
         
         bandCompressors[i].process(bandContext);
         
+        auto oversampledBlock = oversamplers[i]->processSamplesUp(bandBlock);
+        
         const float driveFactor = 1.0f + (amount * 1.5f);
         const float drive = juce::jmax(0.1f, driveFactor);
         const float norm = std::tanh(drive);
 
-        for (size_t ch = 0; ch < bandBlock.getNumChannels(); ++ch)
+        for (size_t ch = 0; ch < oversampledBlock.getNumChannels(); ++ch)
         {
-            float* ptr = bandBlock.getChannelPointer(ch);
-            for (size_t s = 0; s < bandBlock.getNumSamples(); ++s)
+            float* ptr = oversampledBlock.getChannelPointer(ch);
+            for (size_t s = 0; s < oversampledBlock.getNumSamples(); ++s)
             {
                 ptr[s] = std::tanh(ptr[s] * drive) / norm;
             }
         }
         
+        oversamplers[i]->processSamplesDown(bandBlock);
+
         for (int ch = 0; ch < numChannels; ++ch)
             buffer.addFrom(ch, 0, bandBuffers[i], ch, 0, numSamples);
     }
@@ -227,13 +247,24 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
     outputGainModule.setGainDecibels(apvts.getRawParameterValue("output_gain")->load());
     outputGainModule.process(context);
 
-    // Ωμό 16-Bit PCM Truncation
+    // Pink Noise Injection (-75dB) + 16-Bit PCM Truncation
+    float noiseAmp = juce::Decibels::decibelsToGain(-75.0f);
     for (int ch = 0; ch < numChannels; ++ch)
     {
         float* channelData = buffer.getWritePointer(ch);
         for (int s = 0; s < numSamples; ++s)
         {
-            float sample = juce::jlimit(-1.0f, 1.0f, channelData[s]);
+            // Δημιουργία White Noise (-1.0 έως 1.0)
+            float white = (juce::Random::getSystemRandom().nextFloat() * 2.0f) - 1.0f;
+            
+            // Μετατροπή σε Pink Noise (1-pole low pass filter)
+            pinkState[ch] = 0.99f * pinkState[ch] + 0.05f * white;
+            
+            // Μίξη Pink Noise (-75dB)
+            float sample = channelData[s] + (pinkState[ch] * noiseAmp);
+            
+            // Ωμό 16-bit Truncation
+            sample = juce::jlimit(-1.0f, 1.0f, sample);
             int pcm16 = static_cast<int>(sample * 32767.0f);
             channelData[s] = static_cast<float>(pcm16) / 32767.0f;
         }
