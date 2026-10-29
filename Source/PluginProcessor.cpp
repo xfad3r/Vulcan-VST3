@@ -90,6 +90,14 @@ void VulcanProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 
     updatePreEq(); 
 
+    // All-Pass Scrambler initialization (Flip phase at 2.5kHz to destroy AI vocoder coherence)
+    allPassScrambler.state = juce::dsp::IIR::Coefficients<float>::makeAllPass(currentSampleRate, 2500.0f);
+    allPassScrambler.prepare(spec);
+
+    // Reset dither memory
+    ditherZ1[0] = 0.0f;
+    ditherZ1[1] = 0.0f;
+
     auto lp250 = juce::dsp::IIR::Coefficients<float>::makeLowPass(currentSampleRate, 250.0f, 0.7071f);
     auto hp250 = juce::dsp::IIR::Coefficients<float>::makeHighPass(currentSampleRate, 250.0f, 0.7071f);
     auto lp4000 = juce::dsp::IIR::Coefficients<float>::makeLowPass(currentSampleRate, 4000.0f, 0.7071f);
@@ -168,6 +176,9 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
     updatePreEq();
     preEqChain.process(context);
 
+    // Apply Phase Scrambling early in the chain
+    allPassScrambler.process(context);
+
     float amount = apvts.getRawParameterValue("amount")->load();
     float thresholdDb = (amount <= 0.001f) ? 0.0f : (-6.0f - (amount * 10.0f));
     float ratio = 1.0f + (amount * 1.75f);
@@ -244,14 +255,24 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
     outputGainModule.setGainDecibels(apvts.getRawParameterValue("output_gain")->load());
     outputGainModule.process(context);
 
-    // 16-Bit PCM Quantization Noise Emulation
+    // High-Passed TPDF Dither & Quantization Noise Emulation
     for (int ch = 0; ch < numChannels; ++ch)
     {
         float* channelData = buffer.getWritePointer(ch);
         for (int s = 0; s < numSamples; ++s)
         {
-            float sample = juce::jlimit(-1.0f, 1.0f, channelData[s]);
+            float r1 = juce::Random::getSystemRandom().nextFloat();
+            float r2 = juce::Random::getSystemRandom().nextFloat();
+            float tpdf = (r1 - r2); 
+
+            float hpDither = tpdf - ditherZ1[ch];
+            ditherZ1[ch] = tpdf;
+
+            hpDither *= 0.0000305f; 
+
+            float sample = juce::jlimit(-1.0f, 1.0f, channelData[s] + hpDither);
             int pcm16 = static_cast<int>(sample * 32767.0f);
+            
             channelData[s] = static_cast<float>(pcm16) / 32767.0f;
         }
     }
