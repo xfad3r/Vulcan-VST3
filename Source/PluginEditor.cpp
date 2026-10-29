@@ -4,8 +4,8 @@
 VulcanEditor::VulcanEditor (VulcanProcessor& p)
     : AudioProcessorEditor (&p), audioProcessor (p)
 {
-    // Ρύθμιση παραθύρου: 700x350
-    setSize (700, 350);
+    // Αυξήσαμε το πλάτος στα 820px για να χωρέσουν και τα 7 knobs με σωστό padding
+    setSize (820, 350);
 
     setupRotarySlider(inputGainSlider, inputGainAttach, "input_gain");
     setupRotarySlider(eqLowSlider, eqLowAttach, "eq_low");
@@ -30,53 +30,49 @@ void VulcanEditor::setupRotarySlider(juce::Slider& slider, std::unique_ptr<Attac
     slider.setColour(juce::Slider::textBoxOutlineColourId, juce::Colours::transparentBlack);
     addAndMakeVisible(slider);
     
-    // Binding: Συνδέει γραφικά το UI με τις τιμές APVTS του VULCAN Processor
     attach = std::make_unique<Attachment>(audioProcessor.getAPVTS(), paramID, slider);
 }
 
 void VulcanEditor::paint (juce::Graphics& g)
 {
-    // Φόντο "Vulcan Magma" (Black/Deep Amber tint)
     g.fillAll (juce::Colour(0xFF0D0705)); 
     
     g.setColour (juce::Colour(0xFFF59E0B));
     g.setFont (24.0f);
-    
-    // Επίλυση του Error C2039: Χρήση getCurrentFont()
     g.setFont (g.getCurrentFont().withStyle(juce::Font::bold));
     g.drawFittedText ("VULCAN MASTERING CONSOLE", getLocalBounds().withTrimmedTop(20), juce::Justification::centredTop, 1);
     
     g.setColour (juce::Colour(0xFF555555));
     g.setFont (12.0f);
     
-    // Ετικέτες περιοχών
-    g.drawText("INPUT GAIN", 45, 120, 100, 20, juce::Justification::centred);
-    g.drawText("EQ LOW", 145, 120, 100, 20, juce::Justification::centred);
-    g.drawText("EQ MID", 245, 120, 100, 20, juce::Justification::centred);
-    g.drawText("EQ HIGH", 345, 120, 100, 20, juce::Justification::centred);
+    // Κεντραρισμένες ετικέτες με βάση τα νέα, διευρυμένα X coordinates
+    g.drawText("INPUT GAIN", 50,  120, 100, 20, juce::Justification::centred);
+    g.drawText("EQ LOW",     150, 120, 100, 20, juce::Justification::centred);
+    g.drawText("EQ MID",     250, 120, 100, 20, juce::Justification::centred);
+    g.drawText("EQ HIGH",    350, 120, 100, 20, juce::Justification::centred);
     
-    g.setColour (juce::Colour(0xFFF59E0B)); // Amber Highlight
-    g.drawText("CHARACTER", 445, 120, 100, 20, juce::Justification::centred);
+    g.setColour (juce::Colour(0xFFF59E0B)); 
+    g.drawText("CHARACTER",  465, 120, 100, 20, juce::Justification::centred);
     
     g.setColour (juce::Colour(0xFF555555));
-    g.drawText("DRIVE", 545, 120, 100, 20, juce::Justification::centred);
-    g.drawText("OUT GAIN", 645, 120, 100, 20, juce::Justification::centred);
+    g.drawText("DRIVE",      570, 120, 100, 20, juce::Justification::centred);
+    g.drawText("OUT GAIN",   670, 120, 100, 20, juce::Justification::centred);
 }
 
 void VulcanEditor::resized()
 {
-    // Τοποθέτηση των Knobs στον καμβά
     const int knobSize = 80;
     const int startY = 150;
     
-    inputGainSlider.setBounds(50, startY, knobSize, knobSize);
-    eqLowSlider.setBounds(150, startY, knobSize, knobSize);
-    eqMidSlider.setBounds(250, startY, knobSize, knobSize);
-    eqHighSlider.setBounds(350, startY, knobSize, knobSize);
+    // Απόλυτα συμμετρική τοποθέτηση με περιθώριο 60px δεξιά/αριστερά
+    inputGainSlider.setBounds(60,  startY, knobSize, knobSize);
+    eqLowSlider.setBounds    (160, startY, knobSize, knobSize);
+    eqMidSlider.setBounds    (260, startY, knobSize, knobSize);
+    eqHighSlider.setBounds   (360, startY, knobSize, knobSize);
     
-    // Το κεντρικό Amount Knob γίνεται ελαφρώς μεγαλύτερο (100px)
-    amountSlider.setBounds(445, startY - 10, 100, 100);
+    // Το κεντρικό Amount Knob (100px)
+    amountSlider.setBounds   (465, startY - 10, 100, 100);
     
-    limitDriveSlider.setBounds(550, startY, knobSize, knobSize);
-    outputGainSlider.setBounds(650, startY, knobSize, knobSize);
+    limitDriveSlider.setBounds(580, startY, knobSize, knobSize);
+    outputGainSlider.setBounds(680, startY, knobSize, knobSize);
 }
