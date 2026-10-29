@@ -52,10 +52,6 @@ private:
 
     juce::dsp::ProcessorChain<StereoBiquad, StereoBiquad, StereoBiquad> preEqChain;
 
-    // Προσθήκη δυναμικού All-Pass Scrambler και μεταβλητής LFO
-    juce::dsp::ProcessorDuplicator<FilterMono, FilterCoef> allPassScrambler;
-    float lfoPhase = 0.0f;
-
     juce::dsp::ProcessorChain<StereoBiquad, StereoBiquad> lp250Chain;
     juce::dsp::ProcessorChain<StereoBiquad, StereoBiquad> hp250Chain;
     juce::dsp::ProcessorChain<StereoBiquad, StereoBiquad> lp4000Chain;
@@ -66,7 +62,7 @@ private:
     std::array<juce::dsp::Compressor<float>, 3> bandCompressors;
     juce::AudioBuffer<float> bandBuffers[3];
 
-    std::array<std::unique_ptr<juce::dsp::Oversampling<float>>, 3> oversamplers;
+    // ΑΦΑΙΡΕΘΗΚΕ ΤΟ OVERSAMPLING ΓΙΑ ΝΑ ΠΡΟΚΛΗΘΕΙ ALIASING
 
     juce::dsp::Compressor<float> limiter;
     juce::dsp::Gain<float> outputGainModule;
