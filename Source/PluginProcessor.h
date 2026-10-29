@@ -17,7 +17,6 @@ public:
     bool isBusesLayoutSupported (const BusesLayout& layouts) const override;
     void processBlock (juce::AudioBuffer<float>&, juce::MidiBuffer&) override;
 
-    // Εδώ τώρα μόνο δηλώνουμε το Editor, δεν το κατασκευάζουμε inline
     juce::AudioProcessorEditor* createEditor() override;
     bool hasEditor() const override { return true; }
 
@@ -36,7 +35,6 @@ public:
     void getStateInformation (juce::MemoryBlock& destData) override;
     void setStateInformation (const void* data, int sizeInBytes) override;
 
-    // Γέφυρα για να μπορεί το GUI (PluginEditor) να βλέπει τις παραμέτρους
     juce::AudioProcessorValueTreeState& getAPVTS() { return apvts; }
 
 private:
@@ -54,12 +52,6 @@ private:
 
     juce::dsp::ProcessorChain<StereoBiquad, StereoBiquad, StereoBiquad> preEqChain;
 
-    // 1. All-Pass Phase Scrambler (Psychoacoustic Hacking)
-    juce::dsp::ProcessorDuplicator<FilterMono, FilterCoef> allPassScrambler;
-
-    // 2. State memory for 1-Pole High-Pass TPDF Dither
-    float ditherZ1[2] = { 0.0f, 0.0f };
-
     juce::dsp::ProcessorChain<StereoBiquad, StereoBiquad> lp250Chain;
     juce::dsp::ProcessorChain<StereoBiquad, StereoBiquad> hp250Chain;
     juce::dsp::ProcessorChain<StereoBiquad, StereoBiquad> lp4000Chain;
@@ -70,7 +62,6 @@ private:
     std::array<juce::dsp::Compressor<float>, 3> bandCompressors;
     juce::AudioBuffer<float> bandBuffers[3];
 
-    // Array of 4x Oversamplers for the 3 bands
     std::array<std::unique_ptr<juce::dsp::Oversampling<float>>, 3> oversamplers;
 
     juce::dsp::Compressor<float> limiter;
