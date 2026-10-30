@@ -90,7 +90,7 @@ void VulcanProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 
     updatePreEq(); 
     
-    // Αρχικοποίηση Buffer Καθυστέρησης
+    // Αρχικοποίηση Buffer Καθυστέρησης (Haas Effect)
     std::fill(highBandDelayBuffer.begin(), highBandDelayBuffer.end(), 0.0f);
     delayWriteIndex = 0;
 
@@ -251,18 +251,6 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
         
         oversamplers[i]->processSamplesDown(bandBlock);
 
-        // High-Band TPDF Dither
-        if (i == 2) {
-            for (size_t ch = 0; ch < bandBlock.getNumChannels(); ++ch) {
-                float* ptr = bandBlock.getChannelPointer(ch);
-                for (size_t s = 0; s < bandBlock.getNumSamples(); ++s) {
-                    float r1 = juce::Random::getSystemRandom().nextFloat();
-                    float r2 = juce::Random::getSystemRandom().nextFloat();
-                    ptr[s] += (r1 - r2) * 0.015f; 
-                }
-            }
-        }
-
         for (int ch = 0; ch < numChannels; ++ch)
             buffer.addFrom(ch, 0, bandBuffers[i], ch, 0, numSamples);
     }
@@ -274,12 +262,17 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
     outputGainModule.setGainDecibels(apvts.getRawParameterValue("output_gain")->load());
     outputGainModule.process(context);
 
+    // 16-Bit TPDF Dither & PCM Truncation (Ακριβές Noise Floor στα -96dB)
     for (int ch = 0; ch < numChannels; ++ch)
     {
         float* channelData = buffer.getWritePointer(ch);
         for (int s = 0; s < numSamples; ++s)
         {
-            float sample = juce::jlimit(-1.0f, 1.0f, channelData[s]);
+            float r1 = juce::Random::getSystemRandom().nextFloat();
+            float r2 = juce::Random::getSystemRandom().nextFloat();
+            float dither = (r1 - r2) * (1.0f / 32767.0f); 
+            
+            float sample = juce::jlimit(-1.0f, 1.0f, channelData[s] + dither);
             int pcm16 = static_cast<int>(sample * 32767.0f);
             channelData[s] = static_cast<float>(pcm16) / 32767.0f;
         }
