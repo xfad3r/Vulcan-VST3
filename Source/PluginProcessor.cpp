@@ -90,9 +90,12 @@ void VulcanProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 
     updatePreEq(); 
     
-    // Αρχικοποίηση Buffer Καθυστέρησης (Haas Effect)
     std::fill(highBandDelayBuffer.begin(), highBandDelayBuffer.end(), 0.0f);
     delayWriteIndex = 0;
+    envState = 0.0f;
+    prevMid = 0.0f;
+    lfo1 = 0.0f;
+    lfo2 = 0.0f;
 
     auto lp250 = juce::dsp::IIR::Coefficients<float>::makeLowPass(currentSampleRate, 250.0f, 0.7071f);
     auto hp250 = juce::dsp::IIR::Coefficients<float>::makeHighPass(currentSampleRate, 250.0f, 0.7071f);
@@ -216,16 +219,52 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
         juce::dsp::AudioBlock<float> bandBlock(bandBuffers[i]);
         juce::dsp::ProcessContextReplacing<float> bandContext(bandBlock);
         
-        // --- High-Band Stereo Decorrelation (Haas Effect) ---
+        // --- LAUNDERER v70: TRANSIENT-EXEMPT PHASE SCRAMBLER (Mids & Highs) ---
+        if (i > 0 && bandBlock.getNumChannels() > 1) {
+            float* left = bandBlock.getChannelPointer(0);
+            float* right = bandBlock.getChannelPointer(1);
+            
+            for (size_t s = 0; s < bandBlock.getNumSamples(); ++s) {
+                float mid = 0.5f * (left[s] + right[s]);
+                float abs_mid = std::abs(mid);
+                
+                float mid_deriv = std::abs(mid - prevMid);
+                prevMid = mid;
+                
+                envState += (abs_mid > envState) ? 0.01f * (abs_mid - envState) : 0.001f * (abs_mid - envState);
+                
+                // Ο "Φάκελος" που προστατεύει τα transients (1.0 = sustain, 0.0 = attack transient)
+                float transient_lock = std::exp(-6.5f * envState) * (1.0f / (1.0f + 35.0f * mid_deriv));
+                
+                lfo1 += 0.036f; if (lfo1 > 6.2831853f) lfo1 -= 6.2831853f;
+                lfo2 += 0.089f; if (lfo2 > 6.2831853f) lfo2 -= 6.2831853f;
+                
+                // Διάλυση του Neural Vocoder (Εφαρμόζεται ΜΟΝΟ στις συνεχόμενες νότες)
+                float phase_mod = (std::sin(lfo1) + 0.6f * std::cos(lfo2)) * 0.00085f * transient_lock;
+                
+                float mod_left = left[s] + phase_mod;
+                float mod_right = right[s] - phase_mod;
+                
+                float new_mid = 0.5f * (mod_left + mod_right);
+                float new_side = 0.5f * (mod_left - mod_right);
+                
+                // Dynamic Stereo Width Modulation
+                float width_mod = 1.0f + 0.05f * std::sin(lfo1 * 0.1f) * transient_lock;
+                new_side *= width_mod;
+                
+                left[s] = new_mid + new_side;
+                right[s] = new_mid - new_side;
+            }
+        }
+
+        // --- High-Band Haas Decorrelation ---
         if (i == 2 && bandBlock.getNumChannels() > 1 && currentSampleRate > 0.0) {
             int delaySamples = static_cast<int>(currentSampleRate * 0.0015f); // 1.5ms
             float* rightChannel = bandBlock.getChannelPointer(1);
-            
             for (size_t s = 0; s < bandBlock.getNumSamples(); ++s) {
                 float input = rightChannel[s];
                 int readPos = delayWriteIndex - delaySamples;
                 if (readPos < 0) readPos += 8192;
-                
                 rightChannel[s] = highBandDelayBuffer[readPos];
                 highBandDelayBuffer[delayWriteIndex] = input;
                 delayWriteIndex = (delayWriteIndex + 1) % 8192;
@@ -239,24 +278,24 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
         const float driveFactor = 1.0f + (amount * 1.5f);
         const float baseDrive = juce::jmax(0.1f, driveFactor);
         
-        // --- Analog Component Mismatch ---
-        // 3% διαφορά στο Drive ανάμεσα σε L (Left) και R (Right)
+        // --- LAUNDERER v70: Asymmetric Component Mismatch & 2nd Order Overtones ---
         const float driveL = baseDrive;
-        const float normL = std::tanh(driveL);
+        const float normL = std::tanh(driveL) + 0.032f * (std::tanh(driveL) * std::tanh(driveL));
         const float driveR = baseDrive * 1.03f; 
-        const float normR = std::tanh(driveR);
+        const float normR = std::tanh(driveR) + 0.032f * (std::tanh(driveR) * std::tanh(driveR));
 
         for (size_t ch = 0; ch < oversampledBlock.getNumChannels(); ++ch)
         {
             float* ptr = oversampledBlock.getChannelPointer(ch);
-            
-            // Το κανάλι 0 παίρνει το Left drive, όλα τα υπόλοιπα το Right drive (ασυμμετρία)
             float currentDrive = (ch == 0) ? driveL : driveR;
             float currentNorm = (ch == 0) ? normL : normR;
 
             for (size_t s = 0; s < oversampledBlock.getNumSamples(); ++s)
             {
-                ptr[s] = std::tanh(ptr[s] * currentDrive) / currentNorm;
+                float sat = std::tanh(ptr[s] * currentDrive);
+                // Ασύμμετρη παραμόρφωση λυχνίας (καλύπτει τα κενά του AI)
+                float asymmetric = sat + 0.032f * (sat * sat) * (sat >= 0.0f ? 1.0f : -1.0f);
+                ptr[s] = asymmetric / currentNorm;
             }
         }
         
@@ -273,7 +312,7 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
     outputGainModule.setGainDecibels(apvts.getRawParameterValue("output_gain")->load());
     outputGainModule.process(context);
 
-    // 16-Bit TPDF Dither & PCM Truncation (Ακριβές Noise Floor στα -96dB)
+    // 16-Bit TPDF Dither & PCM Truncation
     for (int ch = 0; ch < numChannels; ++ch)
     {
         float* channelData = buffer.getWritePointer(ch);
