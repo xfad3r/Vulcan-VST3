@@ -1,5 +1,6 @@
 #pragma once
 #include <JuceHeader.h>
+#include <array>
 
 struct Preset {
     juce::String name;
@@ -67,9 +68,9 @@ private:
     juce::dsp::Compressor<float> limiter;
     juce::dsp::Gain<float> outputGainModule;
     
-    // High-Band Chaos Engine
-    juce::dsp::ProcessorDuplicator<FilterMono, FilterCoef> highBandAllPass;
-    float highBandPhaseCurrent = 10000.0f;
+    // High-Band Haas Decorrelation Buffer (μόνο για το R channel)
+    std::array<float, 8192> highBandDelayBuffer { 0.0f };
+    int delayWriteIndex = 0;
 
     double currentSampleRate = 44100.0;
     void updatePreEq();
