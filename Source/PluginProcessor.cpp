@@ -96,6 +96,9 @@ void VulcanProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     prevMid = 0.0f;
     lfo1 = 0.0f;
     lfo2 = 0.0f;
+    apStateL = 0.0f;
+    apStateR = 0.0f;
+    noiseHpfState = 0.0f;
 
     auto lp250 = juce::dsp::IIR::Coefficients<float>::makeLowPass(currentSampleRate, 250.0f, 0.7071f);
     auto hp250 = juce::dsp::IIR::Coefficients<float>::makeHighPass(currentSampleRate, 250.0f, 0.7071f);
@@ -230,7 +233,7 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
             }
         }
 
-        // --- LAUNDERER v70: TRANSIENT-EXEMPT PHASE SCRAMBLER (Mids & Highs) ---
+        // --- LAUNDERER v70: TRANSIENT-EXEMPT TRUE ALL-PASS (Mids & Highs) ---
         if (i > 0 && bandBlock.getNumChannels() > 1) {
             float* left = bandBlock.getChannelPointer(0);
             float* right = bandBlock.getChannelPointer(1);
@@ -246,25 +249,22 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
                 float transient_lock = std::exp(-6.5f * envState) * (1.0f / (1.0f + 35.0f * mid_deriv));
                 
                 lfo1 += 0.036f; if (lfo1 > 6.2831853f) lfo1 -= 6.2831853f;
-                lfo2 += 0.089f; if (lfo2 > 6.2831853f) lfo2 -= 6.2831853f;
                 
-                float phase_mod = (std::sin(lfo1) + 0.6f * std::cos(lfo2)) * 0.00085f * transient_lock;
+                // Πραγματικό 1st-Order All-Pass (Διασπά τη φάση χωρίς να αλλάζει το EQ)
+                float coeff = 0.15f + 0.1f * std::sin(lfo1) * transient_lock;
                 
-                float mod_left = left[s] + phase_mod;
-                float mod_right = right[s] - phase_mod;
+                float ap_out_L = -coeff * left[s] + apStateL;
+                apStateL = left[s] + coeff * ap_out_L;
                 
-                float new_mid = 0.5f * (mod_left + mod_right);
-                float new_side = 0.5f * (mod_left - mod_right);
+                float ap_out_R = -coeff * right[s] + apStateR;
+                apStateR = right[s] + coeff * ap_out_R;
                 
-                float width_mod = 1.0f + 0.05f * std::sin(lfo1 * 0.1f) * transient_lock;
-                new_side *= width_mod;
-                
-                left[s] = new_mid + new_side;
-                right[s] = new_mid - new_side;
+                left[s] = ap_out_L;
+                right[s] = ap_out_R;
             }
         }
 
-        // --- LAUNDERER v70: HIGH-BAND HAAS & SIDE-CHANNEL AIR ---
+        // --- LAUNDERER v70: HIGH-BAND HAAS & VHF SIDE-CHANNEL AIR ---
         if (i == 2 && bandBlock.getNumChannels() > 1 && currentSampleRate > 0.0) {
             int delaySamples = static_cast<int>(currentSampleRate * 0.0015f); // 1.5ms
             float* leftChannel = bandBlock.getChannelPointer(0);
@@ -279,12 +279,15 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
                 highBandDelayBuffer[delayWriteIndex] = input;
                 delayWriteIndex = (delayWriteIndex + 1) % 8192;
 
-                // Side-Channel Air (Θόρυβος ~ -70dB ΜΟΝΟ στη διαφορά, ΜΟΝΟ στα πρίμα)
+                // VHF Air (High-Pass 1-pole filter στον θόρυβο για Tube Air effect)
+                float raw_noise = ((juce::Random::getSystemRandom().nextFloat() * 2.0f) - 1.0f);
+                noiseHpfState = 0.85f * noiseHpfState + 0.15f * raw_noise;
+                float vhf_noise = (raw_noise - noiseHpfState) * 0.00045f; 
+
                 float mid = 0.5f * (leftChannel[s] + rightChannel[s]);
                 float side = 0.5f * (leftChannel[s] - rightChannel[s]);
 
-                float noise = ((juce::Random::getSystemRandom().nextFloat() * 2.0f) - 1.0f) * 0.0003f; 
-                side += noise;
+                side += vhf_noise;
 
                 leftChannel[s] = mid + side;
                 rightChannel[s] = mid - side;
@@ -331,7 +334,7 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
     outputGainModule.setGainDecibels(apvts.getRawParameterValue("output_gain")->load());
     outputGainModule.process(context);
 
-    // 16-Bit TPDF Dither & PCM Truncation (-96dB Noise Floor)
+    // 16-Bit Tुलिस Dither & PCM Truncation (-96dB Noise Floor)
     for (int ch = 0; ch < numChannels; ++ch)
     {
         float* channelData = buffer.getWritePointer(ch);
