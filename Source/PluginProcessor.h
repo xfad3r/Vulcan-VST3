@@ -1,6 +1,7 @@
 #pragma once
 #include <JuceHeader.h>
 #include <array>
+#include <cmath>
 
 struct Preset {
     juce::String name;
@@ -68,9 +69,14 @@ private:
     juce::dsp::Compressor<float> limiter;
     juce::dsp::Gain<float> outputGainModule;
     
-    // High-Band Haas Decorrelation Buffer (μόνο για το R channel)
+    // --- Launderer V70 Engine Variables ---
     std::array<float, 8192> highBandDelayBuffer { 0.0f };
     int delayWriteIndex = 0;
+    
+    float envState = 0.0f;
+    float prevMid = 0.0f;
+    float lfo1 = 0.0f;
+    float lfo2 = 0.0f;
 
     double currentSampleRate = 44100.0;
     void updatePreEq();
