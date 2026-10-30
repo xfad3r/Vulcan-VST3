@@ -237,15 +237,26 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
         auto oversampledBlock = oversamplers[i]->processSamplesUp(bandBlock);
         
         const float driveFactor = 1.0f + (amount * 1.5f);
-        const float drive = juce::jmax(0.1f, driveFactor);
-        const float norm = std::tanh(drive);
+        const float baseDrive = juce::jmax(0.1f, driveFactor);
+        
+        // --- Analog Component Mismatch ---
+        // 3% διαφορά στο Drive ανάμεσα σε L (Left) και R (Right)
+        const float driveL = baseDrive;
+        const float normL = std::tanh(driveL);
+        const float driveR = baseDrive * 1.03f; 
+        const float normR = std::tanh(driveR);
 
         for (size_t ch = 0; ch < oversampledBlock.getNumChannels(); ++ch)
         {
             float* ptr = oversampledBlock.getChannelPointer(ch);
+            
+            // Το κανάλι 0 παίρνει το Left drive, όλα τα υπόλοιπα το Right drive (ασυμμετρία)
+            float currentDrive = (ch == 0) ? driveL : driveR;
+            float currentNorm = (ch == 0) ? normL : normR;
+
             for (size_t s = 0; s < oversampledBlock.getNumSamples(); ++s)
             {
-                ptr[s] = std::tanh(ptr[s] * drive) / norm;
+                ptr[s] = std::tanh(ptr[s] * currentDrive) / currentNorm;
             }
         }
         
