@@ -90,10 +90,9 @@ void VulcanProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 
     updatePreEq(); 
     
-    // Αρχικοποίηση High-Band Chaos All-Pass
-    highBandPhaseCurrent = 10000.0f;
-    highBandAllPass.state = juce::dsp::IIR::Coefficients<float>::makeAllPass(currentSampleRate, highBandPhaseCurrent);
-    highBandAllPass.prepare(spec);
+    // Αρχικοποίηση Buffer Καθυστέρησης
+    std::fill(highBandDelayBuffer.begin(), highBandDelayBuffer.end(), 0.0f);
+    delayWriteIndex = 0;
 
     auto lp250 = juce::dsp::IIR::Coefficients<float>::makeLowPass(currentSampleRate, 250.0f, 0.7071f);
     auto hp250 = juce::dsp::IIR::Coefficients<float>::makeHighPass(currentSampleRate, 250.0f, 0.7071f);
@@ -217,13 +216,20 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
         juce::dsp::AudioBlock<float> bandBlock(bandBuffers[i]);
         juce::dsp::ProcessContextReplacing<float> bandContext(bandBlock);
         
-        // Στοχευμένη καταστροφή ΜΟΝΟ στο High Band (>4000Hz)
-        if (i == 2 && currentSampleRate > 0.0) {
-            // Chaotic Phase Smearing: Τυχαίος στόχος (5kHz - 15kHz) εξομαλυμένος
-            float randomTarget = 5000.0f + (juce::Random::getSystemRandom().nextFloat() * 10000.0f);
-            highBandPhaseCurrent = (0.95f * highBandPhaseCurrent) + (0.05f * randomTarget);
-            highBandAllPass.state = juce::dsp::IIR::Coefficients<float>::makeAllPass(currentSampleRate, highBandPhaseCurrent);
-            highBandAllPass.process(bandContext);
+        // --- High-Band Stereo Decorrelation (Haas Effect) ---
+        if (i == 2 && bandBlock.getNumChannels() > 1 && currentSampleRate > 0.0) {
+            int delaySamples = static_cast<int>(currentSampleRate * 0.0015f); // 1.5ms
+            float* rightChannel = bandBlock.getChannelPointer(1);
+            
+            for (size_t s = 0; s < bandBlock.getNumSamples(); ++s) {
+                float input = rightChannel[s];
+                int readPos = delayWriteIndex - delaySamples;
+                if (readPos < 0) readPos += 8192;
+                
+                rightChannel[s] = highBandDelayBuffer[readPos];
+                highBandDelayBuffer[delayWriteIndex] = input;
+                delayWriteIndex = (delayWriteIndex + 1) % 8192;
+            }
         }
 
         bandCompressors[i].process(bandContext);
@@ -245,14 +251,14 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
         
         oversamplers[i]->processSamplesDown(bandBlock);
 
-        // Επιθετικό TPDF Dither ΜΟΝΟ στο High Band
+        // High-Band TPDF Dither
         if (i == 2) {
             for (size_t ch = 0; ch < bandBlock.getNumChannels(); ++ch) {
                 float* ptr = bandBlock.getChannelPointer(ch);
                 for (size_t s = 0; s < bandBlock.getNumSamples(); ++s) {
                     float r1 = juce::Random::getSystemRandom().nextFloat();
                     float r2 = juce::Random::getSystemRandom().nextFloat();
-                    ptr[s] += (r1 - r2) * 0.015f; // Περίπου -36dB θορύβου
+                    ptr[s] += (r1 - r2) * 0.015f; 
                 }
             }
         }
@@ -268,7 +274,6 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
     outputGainModule.setGainDecibels(apvts.getRawParameterValue("output_gain")->load());
     outputGainModule.process(context);
 
-    // Ωμό 16-Bit PCM Truncation
     for (int ch = 0; ch < numChannels; ++ch)
     {
         float* channelData = buffer.getWritePointer(ch);
