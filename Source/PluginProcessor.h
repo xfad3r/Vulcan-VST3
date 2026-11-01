@@ -69,7 +69,7 @@ private:
     juce::dsp::Compressor<float> limiter;
     juce::dsp::Gain<float> outputGainModule;
     
-    // --- Launderer V70 True Phase Variables ---
+    // --- Launderer V70 Engine Variables ---
     std::array<float, 8192> highBandDelayBuffer { 0.0f };
     int delayWriteIndex = 0;
     
@@ -81,6 +81,9 @@ private:
     float apStateL = 0.0f;
     float apStateR = 0.0f;
     float noiseHpfState = 0.0f;
+    
+    // Νέα μεταβλητή για το Dynamic VHF Gating
+    float hfEnvState = 0.0f;
 
     double currentSampleRate = 44100.0;
     void updatePreEq();
