@@ -98,8 +98,6 @@ void VulcanProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     midDriftWriteIdx = 0;
     wowPhaseL = 0.0f;
     wowPhaseR = 0.0f;
-    smoothedDelayL = 10.0f;
-    smoothedDelayR = 10.0f;
     
     std::fill(envState.begin(), envState.end(), 0.0f);
     std::fill(prevMid.begin(), prevMid.end(), 0.0f);
@@ -241,7 +239,6 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
         }
 
         // --- VULCAN v70: TAPE MICRO-DRIFT (Wow & Flutter) ON MID BAND ---
-        // Επαναφορά της έκδοσης που κέρδισε το AI, με προσθήκη Slew Limiter για την αποφυγή Zipper Noise
         if (i == 1 && bandBlock.getNumChannels() > 1 && currentSampleRate > 0.0) {
             float* left = bandBlock.getChannelPointer(0);
             float* right = bandBlock.getChannelPointer(1);
@@ -250,38 +247,49 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
                 midDriftBufL[midDriftWriteIdx] = left[s];
                 midDriftBufR[midDriftWriteIdx] = right[s];
                 
+                // Υπολογισμός φακέλου (μόνο για compressor logic, ΔΕΝ κόβει πλέον το delay time)
                 float mid = 0.5f * (left[s] + right[s]);
                 float abs_mid = std::abs(mid);
                 float mid_deriv = std::abs(mid - prevMid[i]);
                 prevMid[i] = mid;
-                
                 envState[i] += (abs_mid > envState[i]) ? 0.01f * (abs_mid - envState[i]) : 0.001f * (abs_mid - envState[i]);
-                float transient_lock = std::exp(-6.5f * envState[i]) * (1.0f / (1.0f + 35.0f * mid_deriv));
                 
+                // Το νικητήριο Wow & Flutter LFO (0.8Hz και 0.95Hz)
                 wowPhaseL += 2.0f * 3.14159f * 0.8f / currentSampleRate;
                 wowPhaseR += 2.0f * 3.14159f * 0.95f / currentSampleRate;
                 if (wowPhaseL > 6.2831853f) wowPhaseL -= 6.2831853f;
                 if (wowPhaseR > 6.2831853f) wowPhaseR -= 6.2831853f;
                 
-                // Υπολογισμός του *Στόχου* Καθυστέρησης (όπως ακριβώς στην έκδοση που νίκησε το AI)
-                float targetDelayL = 10.0f + 8.0f * std::sin(wowPhaseL) * transient_lock;
-                float targetDelayR = 10.0f + 8.0f * std::sin(wowPhaseR) * transient_lock;
+                float delaySamplesL = 10.0f + 8.0f * std::sin(wowPhaseL);
+                float delaySamplesR = 10.0f + 8.0f * std::sin(wowPhaseR);
                 
-                // Slew Limiter (Εξομάλυνση 1-pole): Ομαλή μετάβαση του χρόνου χωρίς απότομα κλικ/zipper noise
-                smoothedDelayL += 0.05f * (targetDelayL - smoothedDelayL);
-                smoothedDelayR += 0.05f * (targetDelayR - smoothedDelayR);
-                
-                auto processDrift = [](float delay, int writeIdx, const std::array<float, 4096>& buf) {
+                // --- Hermite Polynomial Interpolation 3ου βαθμού (Μηδέν θόρυβος/zipper noise στα βιολιά) ---
+                auto hermiteDrift = [](float delay, int writeIdx, const std::array<float, 4096>& buf) {
                     float rPos = (float)writeIdx - delay;
                     if (rPos < 0.0f) rPos += 4096.0f;
-                    int idx0 = ((int)rPos) % 4096;
-                    int idx1 = (idx0 + 1) % 4096;
+                    
+                    int idx1 = ((int)rPos) % 4096;
+                    int idx0 = (idx1 - 1 + 4096) % 4096;
+                    int idx2 = (idx1 + 1) % 4096;
+                    int idx3 = (idx1 + 2) % 4096;
+                    
                     float frac = rPos - std::floor(rPos);
-                    return buf[idx0] * (1.0f - frac) + buf[idx1] * frac;
+                    
+                    float y0 = buf[idx0];
+                    float y1 = buf[idx1];
+                    float y2 = buf[idx2];
+                    float y3 = buf[idx3];
+                    
+                    float c0 = y1;
+                    float c1 = 0.5f * (y2 - y0);
+                    float c2 = y0 - 2.5f * y1 + 2.0f * y2 - 0.5f * y3;
+                    float c3 = 0.5f * (y3 - y0) + 1.5f * (y1 - y2);
+                    
+                    return c0 + frac * (c1 + frac * (c2 + frac * c3));
                 };
                 
-                left[s] = processDrift(smoothedDelayL, midDriftWriteIdx, midDriftBufL);
-                right[s] = processDrift(smoothedDelayR, midDriftWriteIdx, midDriftBufR);
+                left[s] = hermiteDrift(delaySamplesL, midDriftWriteIdx, midDriftBufL);
+                right[s] = hermiteDrift(delaySamplesR, midDriftWriteIdx, midDriftBufR);
                 
                 midDriftWriteIdx = (midDriftWriteIdx + 1) % 4096;
             }
