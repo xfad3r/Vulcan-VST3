@@ -99,6 +99,7 @@ void VulcanProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     apStateL = 0.0f;
     apStateR = 0.0f;
     noiseHpfState = 0.0f;
+    hfEnvState = 0.0f; // Reset
 
     auto lp250 = juce::dsp::IIR::Coefficients<float>::makeLowPass(currentSampleRate, 250.0f, 0.7071f);
     auto hp250 = juce::dsp::IIR::Coefficients<float>::makeHighPass(currentSampleRate, 250.0f, 0.7071f);
@@ -250,7 +251,6 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
                 
                 lfo1 += 0.036f; if (lfo1 > 6.2831853f) lfo1 -= 6.2831853f;
                 
-                // Πραγματικό 1st-Order All-Pass (Διασπά τη φάση χωρίς να αλλάζει το EQ)
                 float coeff = 0.15f + 0.1f * std::sin(lfo1) * transient_lock;
                 
                 float ap_out_L = -coeff * left[s] + apStateL;
@@ -264,7 +264,7 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
             }
         }
 
-        // --- LAUNDERER v70: HIGH-BAND HAAS & VHF SIDE-CHANNEL AIR ---
+        // --- LAUNDERER v70: HIGH-BAND HAAS & DYNAMIC VHF SIDE-CHANNEL AIR ---
         if (i == 2 && bandBlock.getNumChannels() > 1 && currentSampleRate > 0.0) {
             int delaySamples = static_cast<int>(currentSampleRate * 0.0015f); // 1.5ms
             float* leftChannel = bandBlock.getChannelPointer(0);
@@ -279,10 +279,14 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
                 highBandDelayBuffer[delayWriteIndex] = input;
                 delayWriteIndex = (delayWriteIndex + 1) % 8192;
 
-                // VHF Air (High-Pass 1-pole filter στον θόρυβο για Tube Air effect)
+                // Υπολογισμός Ενέργειας High-Band για Dynamic Noise Gating
+                float abs_hf = std::abs(leftChannel[s]) + std::abs(rightChannel[s]);
+                hfEnvState += (abs_hf > hfEnvState) ? 0.05f * (abs_hf - hfEnvState) : 0.001f * (abs_hf - hfEnvState);
+
+                // VHF Air (High-Pass filter) ΠΟΛΛΑΠΛΑΣΙΑΣΜΕΝΟ με το hfEnvState (στη σιγή = 0)
                 float raw_noise = ((juce::Random::getSystemRandom().nextFloat() * 2.0f) - 1.0f);
                 noiseHpfState = 0.85f * noiseHpfState + 0.15f * raw_noise;
-                float vhf_noise = (raw_noise - noiseHpfState) * 0.00045f; 
+                float vhf_noise = (raw_noise - noiseHpfState) * 0.0008f * hfEnvState; 
 
                 float mid = 0.5f * (leftChannel[s] + rightChannel[s]);
                 float side = 0.5f * (leftChannel[s] - rightChannel[s]);
@@ -334,7 +338,7 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
     outputGainModule.setGainDecibels(apvts.getRawParameterValue("output_gain")->load());
     outputGainModule.process(context);
 
-    // 16-Bit Tुलिस Dither & PCM Truncation (-96dB Noise Floor)
+    // 16-Bit TPDF Dither & PCM Truncation (-96dB Noise Floor)
     for (int ch = 0; ch < numChannels; ++ch)
     {
         float* channelData = buffer.getWritePointer(ch);
