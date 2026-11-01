@@ -93,6 +93,12 @@ void VulcanProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     std::fill(highBandDelayBuffer.begin(), highBandDelayBuffer.end(), 0.0f);
     delayWriteIndex = 0;
     
+    std::fill(midDriftBufL.begin(), midDriftBufL.end(), 0.0f);
+    std::fill(midDriftBufR.begin(), midDriftBufR.end(), 0.0f);
+    midDriftWriteIdx = 0;
+    wowPhaseL = 0.0f;
+    wowPhaseR = 0.0f;
+    
     std::fill(envState.begin(), envState.end(), 0.0f);
     std::fill(prevMid.begin(), prevMid.end(), 0.0f);
     std::fill(lfo1.begin(), lfo1.end(), 0.0f);
@@ -233,43 +239,56 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
             }
         }
 
-        // --- LAUNDERER v70: ORGANIC STEREO WIDTH MODULATION (Mids & Highs) ---
-        if (i > 0 && bandBlock.getNumChannels() > 1) {
+        // --- LAUNDERER v70: TAPE MICRO-DRIFT (Wow & Flutter) ON MID BAND ---
+        if (i == 1 && bandBlock.getNumChannels() > 1 && currentSampleRate > 0.0) {
             float* left = bandBlock.getChannelPointer(0);
             float* right = bandBlock.getChannelPointer(1);
             
             for (size_t s = 0; s < bandBlock.getNumSamples(); ++s) {
-                float mid = 0.5f * (left[s] + right[s]);
-                float side = 0.5f * (left[s] - right[s]);
-                float abs_mid = std::abs(mid);
+                midDriftBufL[midDriftWriteIdx] = left[s];
+                midDriftBufR[midDriftWriteIdx] = right[s];
                 
+                float mid = 0.5f * (left[s] + right[s]);
+                float abs_mid = std::abs(mid);
                 float mid_deriv = std::abs(mid - prevMid[i]);
                 prevMid[i] = mid;
                 
                 envState[i] += (abs_mid > envState[i]) ? 0.01f * (abs_mid - envState[i]) : 0.001f * (abs_mid - envState[i]);
                 float transient_lock = std::exp(-6.5f * envState[i]) * (1.0f / (1.0f + 35.0f * mid_deriv));
                 
-                // Πολύ αργό LFO (~0.7 Hz) για να μην παράγει απολύτως κανέναν βόμβο/ήχο
-                lfo1[i] += 0.0001f; 
-                if (lfo1[i] > 6.2831853f) lfo1[i] -= 6.2831853f;
+                // Δύο ασύγχρονα LFOs για Αριστερό και Δεξί κανάλι (0.8Hz και 0.95Hz)
+                wowPhaseL += 2.0f * 3.14159f * 0.8f / currentSampleRate;
+                wowPhaseR += 2.0f * 3.14159f * 0.95f / currentSampleRate;
+                if (wowPhaseL > 6.2831853f) wowPhaseL -= 6.2831853f;
+                if (wowPhaseR > 6.2831853f) wowPhaseR -= 6.2831853f;
                 
-                // Αυξομειώνει μόνο το πλάτος του Side καναλιού (Αόρατο ακουστικά, καταστροφικό για το AI grid)
-                float width_mod = 1.0f + 0.1f * std::sin(lfo1[i]) * transient_lock;
-                side *= width_mod;
+                // Υπολογισμός κλασματικής καθυστέρησης (Tape Drift) προστατεύοντας τα transients
+                float delaySamplesL = (10.0f + 8.0f * std::sin(wowPhaseL)) * transient_lock;
+                float delaySamplesR = (10.0f + 8.0f * std::sin(wowPhaseR)) * transient_lock;
                 
-                left[s] = mid + side;
-                right[s] = mid - side;
+                auto processDrift = [](float delay, int writeIdx, const std::array<float, 4096>& buf) {
+                    float rPos = (float)writeIdx - delay;
+                    if (rPos < 0.0f) rPos += 4096.0f;
+                    int idx0 = ((int)rPos) % 4096;
+                    int idx1 = (idx0 + 1) % 4096;
+                    float frac = rPos - std::floor(rPos);
+                    return buf[idx0] * (1.0f - frac) + buf[idx1] * frac;
+                };
+                
+                left[s] = processDrift(delaySamplesL, midDriftWriteIdx, midDriftBufL);
+                right[s] = processDrift(delaySamplesR, midDriftWriteIdx, midDriftBufR);
+                
+                midDriftWriteIdx = (midDriftWriteIdx + 1) % 4096;
             }
         }
 
         // --- LAUNDERER v70: HIGH-BAND HAAS & STATIC VHF AIR ---
         if (i == 2 && bandBlock.getNumChannels() > 1 && currentSampleRate > 0.0) {
-            int delaySamples = static_cast<int>(currentSampleRate * 0.0015f); // 1.5ms Haas
+            int delaySamples = static_cast<int>(currentSampleRate * 0.0015f); 
             float* leftChannel = bandBlock.getChannelPointer(0);
             float* rightChannel = bandBlock.getChannelPointer(1);
             
             for (size_t s = 0; s < bandBlock.getNumSamples(); ++s) {
-                // Haas Decorrelation
                 float input = rightChannel[s];
                 int readPos = delayWriteIndex - delaySamples;
                 if (readPos < 0) readPos += 8192;
@@ -277,16 +296,14 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
                 highBandDelayBuffer[delayWriteIndex] = input;
                 delayWriteIndex = (delayWriteIndex + 1) % 8192;
 
-                // Static Micro-Air (-85dB, δεν δημιουργεί βόμβο ούτε φύσημα)
+                // Static Micro-Air (-85dB)
                 float raw_noise = ((rng.nextFloat() * 2.0f) - 1.0f);
                 noiseHpfState = 0.85f * noiseHpfState + 0.15f * raw_noise;
                 float vhf_noise = (raw_noise - noiseHpfState) * 0.00005f; 
 
                 float mid = 0.5f * (leftChannel[s] + rightChannel[s]);
                 float side = 0.5f * (leftChannel[s] - rightChannel[s]);
-
                 side += vhf_noise;
-
                 leftChannel[s] = mid + side;
                 rightChannel[s] = mid - side;
             }
