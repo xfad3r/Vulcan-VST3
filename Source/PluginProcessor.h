@@ -73,17 +73,18 @@ private:
     std::array<float, 8192> highBandDelayBuffer { 0.0f };
     int delayWriteIndex = 0;
     
-    float envState = 0.0f;
-    float prevMid = 0.0f;
-    float lfo1 = 0.0f;
-    float lfo2 = 0.0f;
+    // Independent Memory Arrays per Band (αποτρέπει το digital crackle)
+    std::array<float, 3> envState { 0.0f, 0.0f, 0.0f };
+    std::array<float, 3> prevMid { 0.0f, 0.0f, 0.0f };
+    std::array<float, 3> lfo1 { 0.0f, 0.0f, 0.0f };
+    std::array<float, 3> apStateL { 0.0f, 0.0f, 0.0f };
+    std::array<float, 3> apStateR { 0.0f, 0.0f, 0.0f };
     
-    float apStateL = 0.0f;
-    float apStateR = 0.0f;
     float noiseHpfState = 0.0f;
-    
-    // Νέα μεταβλητή για το Dynamic VHF Gating
     float hfEnvState = 0.0f;
+    
+    // Dedicated DSP-Safe Random Generator (αποτρέπει τα CPU dropouts)
+    juce::Random rng;
 
     double currentSampleRate = 44100.0;
     void updatePreEq();
