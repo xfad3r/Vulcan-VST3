@@ -96,7 +96,6 @@ void VulcanProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     std::fill(envState.begin(), envState.end(), 0.0f);
     std::fill(prevMid.begin(), prevMid.end(), 0.0f);
     std::fill(lfo1.begin(), lfo1.end(), 0.0f);
-    std::fill(lfo2.begin(), lfo2.end(), 0.0f);
     
     noiseHpfState = 0.0f;
     rng.setSeedRandomly();
@@ -234,14 +233,14 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
             }
         }
 
-        // --- LAUNDERER v70: TRANSIENT-EXEMPT PHASE SCRAMBLER (Mids & Highs) ---
-        // Επαναφορά του V70 Scrambler αντί για το True All-Pass
+        // --- LAUNDERER v70: ORGANIC STEREO WIDTH MODULATION (Mids & Highs) ---
         if (i > 0 && bandBlock.getNumChannels() > 1) {
             float* left = bandBlock.getChannelPointer(0);
             float* right = bandBlock.getChannelPointer(1);
             
             for (size_t s = 0; s < bandBlock.getNumSamples(); ++s) {
                 float mid = 0.5f * (left[s] + right[s]);
+                float side = 0.5f * (left[s] - right[s]);
                 float abs_mid = std::abs(mid);
                 
                 float mid_deriv = std::abs(mid - prevMid[i]);
@@ -250,33 +249,27 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
                 envState[i] += (abs_mid > envState[i]) ? 0.01f * (abs_mid - envState[i]) : 0.001f * (abs_mid - envState[i]);
                 float transient_lock = std::exp(-6.5f * envState[i]) * (1.0f / (1.0f + 35.0f * mid_deriv));
                 
-                lfo1[i] += 0.036f; if (lfo1[i] > 6.2831853f) lfo1[i] -= 6.2831853f;
-                lfo2[i] += 0.089f; if (lfo2[i] > 6.2831853f) lfo2[i] -= 6.2831853f;
+                // Πολύ αργό LFO (~0.7 Hz) για να μην παράγει απολύτως κανέναν βόμβο/ήχο
+                lfo1[i] += 0.0001f; 
+                if (lfo1[i] > 6.2831853f) lfo1[i] -= 6.2831853f;
                 
-                float phase_mod = (std::sin(lfo1[i]) + 0.6f * std::cos(lfo2[i])) * 0.00085f * transient_lock;
+                // Αυξομειώνει μόνο το πλάτος του Side καναλιού (Αόρατο ακουστικά, καταστροφικό για το AI grid)
+                float width_mod = 1.0f + 0.1f * std::sin(lfo1[i]) * transient_lock;
+                side *= width_mod;
                 
-                float mod_left = left[s] + phase_mod;
-                float mod_right = right[s] - phase_mod;
-                
-                float new_mid = 0.5f * (mod_left + mod_right);
-                float new_side = 0.5f * (mod_left - mod_right);
-                
-                float width_mod = 1.0f + 0.05f * std::sin(lfo1[i] * 0.1f) * transient_lock;
-                new_side *= width_mod;
-                
-                left[s] = new_mid + new_side;
-                right[s] = new_mid - new_side;
+                left[s] = mid + side;
+                right[s] = mid - side;
             }
         }
 
-        // --- LAUNDERER v70: HIGH-BAND HAAS & STATIC VHF SIDE-CHANNEL AIR ---
+        // --- LAUNDERER v70: HIGH-BAND HAAS & STATIC VHF AIR ---
         if (i == 2 && bandBlock.getNumChannels() > 1 && currentSampleRate > 0.0) {
-            int delaySamples = static_cast<int>(currentSampleRate * 0.0015f); // 1.5ms
+            int delaySamples = static_cast<int>(currentSampleRate * 0.0015f); // 1.5ms Haas
             float* leftChannel = bandBlock.getChannelPointer(0);
             float* rightChannel = bandBlock.getChannelPointer(1);
             
             for (size_t s = 0; s < bandBlock.getNumSamples(); ++s) {
-                // Haas Decorrelation (Δεξί Κανάλι)
+                // Haas Decorrelation
                 float input = rightChannel[s];
                 int readPos = delayWriteIndex - delaySamples;
                 if (readPos < 0) readPos += 8192;
@@ -284,7 +277,7 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
                 highBandDelayBuffer[delayWriteIndex] = input;
                 delayWriteIndex = (delayWriteIndex + 1) % 8192;
 
-                // Static VHF Air (Χωρίς dynamic pumping, καρφωμένο στα ~ -85dB)
+                // Static Micro-Air (-85dB, δεν δημιουργεί βόμβο ούτε φύσημα)
                 float raw_noise = ((rng.nextFloat() * 2.0f) - 1.0f);
                 noiseHpfState = 0.85f * noiseHpfState + 0.15f * raw_noise;
                 float vhf_noise = (raw_noise - noiseHpfState) * 0.00005f; 
@@ -339,7 +332,7 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
     outputGainModule.setGainDecibels(apvts.getRawParameterValue("output_gain")->load());
     outputGainModule.process(context);
 
-    // 16-Bit TPDF Dither & PCM Truncation (-96dB Noise Floor)
+    // 16-Bit TPDF Dither & PCM Truncation
     for (int ch = 0; ch < numChannels; ++ch)
     {
         float* channelData = buffer.getWritePointer(ch);
