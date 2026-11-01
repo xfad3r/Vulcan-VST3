@@ -79,10 +79,6 @@ private:
     float wowPhaseL = 0.0f;
     float wowPhaseR = 0.0f;
     
-    // Smoothed Delay Time Variables (Slew Limiters)
-    float smoothedDelayL = 10.0f;
-    float smoothedDelayR = 10.0f;
-    
     std::array<float, 3> envState { 0.0f, 0.0f, 0.0f };
     std::array<float, 3> prevMid { 0.0f, 0.0f, 0.0f };
     
