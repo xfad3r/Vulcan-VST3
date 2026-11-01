@@ -69,14 +69,20 @@ private:
     juce::dsp::Compressor<float> limiter;
     juce::dsp::Gain<float> outputGainModule;
     
-    // --- Launderer V70 Engine Variables ---
+    // --- Launderer V70 Core Variables ---
     std::array<float, 8192> highBandDelayBuffer { 0.0f };
     int delayWriteIndex = 0;
+    
+    // Tape Micro-Drift Buffers (Mid Band)
+    std::array<float, 4096> midDriftBufL { 0.0f };
+    std::array<float, 4096> midDriftBufR { 0.0f };
+    int midDriftWriteIdx = 0;
+    float wowPhaseL = 0.0f;
+    float wowPhaseR = 0.0f;
     
     std::array<float, 3> envState { 0.0f, 0.0f, 0.0f };
     std::array<float, 3> prevMid { 0.0f, 0.0f, 0.0f };
     std::array<float, 3> lfo1 { 0.0f, 0.0f, 0.0f };
-    std::array<float, 3> lfo2 { 0.0f, 0.0f, 0.0f };
     
     float noiseHpfState = 0.0f;
     
