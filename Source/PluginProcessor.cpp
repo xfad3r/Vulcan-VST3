@@ -98,10 +98,11 @@ void VulcanProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     midDriftWriteIdx = 0;
     wowPhaseL = 0.0f;
     wowPhaseR = 0.0f;
+    smoothedDelayL = 10.0f;
+    smoothedDelayR = 10.0f;
     
     std::fill(envState.begin(), envState.end(), 0.0f);
     std::fill(prevMid.begin(), prevMid.end(), 0.0f);
-    std::fill(lfo1.begin(), lfo1.end(), 0.0f);
     
     noiseHpfState = 0.0f;
     rng.setSeedRandomly();
@@ -239,7 +240,8 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
             }
         }
 
-        // --- VULCAN v70: COMPLEX TAPE DRIFT & TRANSIENT-LOCKED STEREO WIDTH ---
+        // --- VULCAN v70: TAPE MICRO-DRIFT (Wow & Flutter) ON MID BAND ---
+        // Επαναφορά της έκδοσης που κέρδισε το AI, με προσθήκη Slew Limiter για την αποφυγή Zipper Noise
         if (i == 1 && bandBlock.getNumChannels() > 1 && currentSampleRate > 0.0) {
             float* left = bandBlock.getChannelPointer(0);
             float* right = bandBlock.getChannelPointer(1);
@@ -248,28 +250,27 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
                 midDriftBufL[midDriftWriteIdx] = left[s];
                 midDriftBufR[midDriftWriteIdx] = right[s];
                 
-                // Υπολογισμός Φακέλου για τα Transients (ΔΕΝ επηρεάζει πλέον το delay time)
-                float mid_orig = 0.5f * (left[s] + right[s]);
-                float abs_mid = std::abs(mid_orig);
-                float mid_deriv = std::abs(mid_orig - prevMid[i]);
-                prevMid[i] = mid_orig;
+                float mid = 0.5f * (left[s] + right[s]);
+                float abs_mid = std::abs(mid);
+                float mid_deriv = std::abs(mid - prevMid[i]);
+                prevMid[i] = mid;
                 
                 envState[i] += (abs_mid > envState[i]) ? 0.01f * (abs_mid - envState[i]) : 0.001f * (abs_mid - envState[i]);
                 float transient_lock = std::exp(-6.5f * envState[i]) * (1.0f / (1.0f + 35.0f * mid_deriv));
                 
-                // Complex LFO (2 ημίτονα μαζι για να μην το πιάσει ο αλγόριθμος ως VST)
                 wowPhaseL += 2.0f * 3.14159f * 0.8f / currentSampleRate;
                 wowPhaseR += 2.0f * 3.14159f * 0.95f / currentSampleRate;
                 if (wowPhaseL > 6.2831853f) wowPhaseL -= 6.2831853f;
                 if (wowPhaseR > 6.2831853f) wowPhaseR -= 6.2831853f;
                 
-                float complexL = std::sin(wowPhaseL) + 0.33f * std::cos(wowPhaseL * 1.4f);
-                float complexR = std::sin(wowPhaseR) + 0.33f * std::cos(wowPhaseR * 1.3f);
+                // Υπολογισμός του *Στόχου* Καθυστέρησης (όπως ακριβώς στην έκδοση που νίκησε το AI)
+                float targetDelayL = 10.0f + 8.0f * std::sin(wowPhaseL) * transient_lock;
+                float targetDelayR = 10.0f + 8.0f * std::sin(wowPhaseR) * transient_lock;
                 
-                float delaySamplesL = 10.0f + 6.0f * complexL;
-                float delaySamplesR = 10.0f + 6.0f * complexR;
+                // Slew Limiter (Εξομάλυνση 1-pole): Ομαλή μετάβαση του χρόνου χωρίς απότομα κλικ/zipper noise
+                smoothedDelayL += 0.05f * (targetDelayL - smoothedDelayL);
+                smoothedDelayR += 0.05f * (targetDelayR - smoothedDelayR);
                 
-                // Ομαλό Delay (Χωρίς κλικς)
                 auto processDrift = [](float delay, int writeIdx, const std::array<float, 4096>& buf) {
                     float rPos = (float)writeIdx - delay;
                     if (rPos < 0.0f) rPos += 4096.0f;
@@ -279,19 +280,8 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
                     return buf[idx0] * (1.0f - frac) + buf[idx1] * frac;
                 };
                 
-                float delayed_left = processDrift(delaySamplesL, midDriftWriteIdx, midDriftBufL);
-                float delayed_right = processDrift(delaySamplesR, midDriftWriteIdx, midDriftBufR);
-                
-                // Ξανα-υπολογίζουμε Mid/Side ΜΕΤΑ το delay
-                float new_mid = 0.5f * (delayed_left + delayed_right);
-                float new_side = 0.5f * (delayed_left - delayed_right);
-                
-                // Εφαρμογή του χαοτικού φακέλου (transient_lock) ΣΤΟ ΠΛΑΤΟΣ (Αόρατο, καταστροφικό για AI)
-                float width_mod = 1.0f + 0.25f * complexL * transient_lock;
-                new_side *= width_mod;
-                
-                left[s] = new_mid + new_side;
-                right[s] = new_mid - new_side;
+                left[s] = processDrift(smoothedDelayL, midDriftWriteIdx, midDriftBufL);
+                right[s] = processDrift(smoothedDelayR, midDriftWriteIdx, midDriftBufR);
                 
                 midDriftWriteIdx = (midDriftWriteIdx + 1) % 4096;
             }
