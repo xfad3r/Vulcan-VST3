@@ -92,14 +92,16 @@ void VulcanProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     
     std::fill(highBandDelayBuffer.begin(), highBandDelayBuffer.end(), 0.0f);
     delayWriteIndex = 0;
-    envState = 0.0f;
-    prevMid = 0.0f;
-    lfo1 = 0.0f;
-    lfo2 = 0.0f;
-    apStateL = 0.0f;
-    apStateR = 0.0f;
+    
+    std::fill(envState.begin(), envState.end(), 0.0f);
+    std::fill(prevMid.begin(), prevMid.end(), 0.0f);
+    std::fill(lfo1.begin(), lfo1.end(), 0.0f);
+    std::fill(apStateL.begin(), apStateL.end(), 0.0f);
+    std::fill(apStateR.begin(), apStateR.end(), 0.0f);
+    
     noiseHpfState = 0.0f;
-    hfEnvState = 0.0f; // Reset
+    hfEnvState = 0.0f;
+    rng.setSeedRandomly();
 
     auto lp250 = juce::dsp::IIR::Coefficients<float>::makeLowPass(currentSampleRate, 250.0f, 0.7071f);
     auto hp250 = juce::dsp::IIR::Coefficients<float>::makeHighPass(currentSampleRate, 250.0f, 0.7071f);
@@ -243,21 +245,21 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
                 float mid = 0.5f * (left[s] + right[s]);
                 float abs_mid = std::abs(mid);
                 
-                float mid_deriv = std::abs(mid - prevMid);
-                prevMid = mid;
+                float mid_deriv = std::abs(mid - prevMid[i]);
+                prevMid[i] = mid;
                 
-                envState += (abs_mid > envState) ? 0.01f * (abs_mid - envState) : 0.001f * (abs_mid - envState);
-                float transient_lock = std::exp(-6.5f * envState) * (1.0f / (1.0f + 35.0f * mid_deriv));
+                envState[i] += (abs_mid > envState[i]) ? 0.01f * (abs_mid - envState[i]) : 0.001f * (abs_mid - envState[i]);
+                float transient_lock = std::exp(-6.5f * envState[i]) * (1.0f / (1.0f + 35.0f * mid_deriv));
                 
-                lfo1 += 0.036f; if (lfo1 > 6.2831853f) lfo1 -= 6.2831853f;
+                lfo1[i] += 0.036f; if (lfo1[i] > 6.2831853f) lfo1[i] -= 6.2831853f;
                 
-                float coeff = 0.15f + 0.1f * std::sin(lfo1) * transient_lock;
+                float coeff = 0.15f + 0.1f * std::sin(lfo1[i]) * transient_lock;
                 
-                float ap_out_L = -coeff * left[s] + apStateL;
-                apStateL = left[s] + coeff * ap_out_L;
+                float ap_out_L = -coeff * left[s] + apStateL[i];
+                apStateL[i] = left[s] + coeff * ap_out_L;
                 
-                float ap_out_R = -coeff * right[s] + apStateR;
-                apStateR = right[s] + coeff * ap_out_R;
+                float ap_out_R = -coeff * right[s] + apStateR[i];
+                apStateR[i] = right[s] + coeff * ap_out_R;
                 
                 left[s] = ap_out_L;
                 right[s] = ap_out_R;
@@ -284,7 +286,7 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
                 hfEnvState += (abs_hf > hfEnvState) ? 0.05f * (abs_hf - hfEnvState) : 0.001f * (abs_hf - hfEnvState);
 
                 // VHF Air (High-Pass filter) ΠΟΛΛΑΠΛΑΣΙΑΣΜΕΝΟ με το hfEnvState (στη σιγή = 0)
-                float raw_noise = ((juce::Random::getSystemRandom().nextFloat() * 2.0f) - 1.0f);
+                float raw_noise = ((rng.nextFloat() * 2.0f) - 1.0f);
                 noiseHpfState = 0.85f * noiseHpfState + 0.15f * raw_noise;
                 float vhf_noise = (raw_noise - noiseHpfState) * 0.0008f * hfEnvState; 
 
@@ -344,8 +346,8 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
         float* channelData = buffer.getWritePointer(ch);
         for (int s = 0; s < numSamples; ++s)
         {
-            float r1 = juce::Random::getSystemRandom().nextFloat();
-            float r2 = juce::Random::getSystemRandom().nextFloat();
+            float r1 = rng.nextFloat();
+            float r2 = rng.nextFloat();
             float dither = (r1 - r2) * (1.0f / 32767.0f); 
             
             float sample = juce::jlimit(-1.0f, 1.0f, channelData[s] + dither);
