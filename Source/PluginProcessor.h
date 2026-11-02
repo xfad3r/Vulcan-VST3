@@ -69,12 +69,14 @@ private:
     juce::dsp::Compressor<float> limiter;
     juce::dsp::Gain<float> outputGainModule;
     
-    // --- VULCAN v70 Stealth Variables ---
-    std::array<float, 8192> midBandDelayBuffer { 0.0f };
-    int midDelayWriteIndex = 0;
+    // --- VULCAN STEALTH: DUAL L/R MICRO-DELAY BUFFERS ---
+    std::array<float, 8192> midDelayL { 0.0f };
+    std::array<float, 8192> midDelayR { 0.0f };
+    int midDelayWriteIdx = 0;
 
-    std::array<float, 8192> highBandDelayBuffer { 0.0f };
-    int delayWriteIndex = 0;
+    std::array<float, 8192> highDelayL { 0.0f };
+    std::array<float, 8192> highDelayR { 0.0f };
+    int highDelayWriteIdx = 0;
     
     float noiseHpfState = 0.0f;
     juce::Random rng;
