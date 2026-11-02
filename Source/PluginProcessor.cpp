@@ -7,7 +7,6 @@ VulcanProcessor::VulcanProcessor()
                       .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
       apvts (*this, nullptr, "Parameters", createParameterLayout())
 {
-    // --- ΠΡΟΣΘΗΚΗ ΝΕΩΝ PRESETS ---
     presets = {
         { "01. Default / Clean",      0.0f,  0.0f,  0.0f,  0.0f, 0.0f, 0.0f,  0.0f },
         { "02. Glue & Punch",         0.0f,  0.5f,  0.0f,  0.5f, 0.3f, 1.5f, -0.5f },
@@ -237,44 +236,53 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
             }
         }
 
-        // --- VULCAN STEALTH: MID-BAND STATIC HAAS DECORRELATION (250Hz - 4000Hz) ---
+        // --- VULCAN STEALTH: MID-BAND SIDE-CHANNEL DECORRELATION (250Hz - 4000Hz) ---
+        // Κεντράρει απόλυτα τη μίξη εφαρμόζοντας το delay ΜΟΝΟ στο στερεοφωνικό πλάτος (Side)
         if (i == 1 && bandBlock.getNumChannels() > 1 && currentSampleRate > 0.0) {
             int delaySamples = static_cast<int>(currentSampleRate * 0.0005f); // 0.5ms Static Delay
-            float* rightChannel = bandBlock.getChannelPointer(1);
+            float* left = bandBlock.getChannelPointer(0);
+            float* right = bandBlock.getChannelPointer(1);
             
             for (size_t s = 0; s < bandBlock.getNumSamples(); ++s) {
-                float input = rightChannel[s];
+                float mid = 0.5f * (left[s] + right[s]);
+                float side = 0.5f * (left[s] - right[s]);
+                
+                float sideInput = side;
                 int readPos = midDelayWriteIndex - delaySamples;
                 if (readPos < 0) readPos += 8192;
-                rightChannel[s] = midBandDelayBuffer[readPos];
-                midBandDelayBuffer[midDelayWriteIndex] = input;
+                side = midBandDelayBuffer[readPos];
+                midBandDelayBuffer[midDelayWriteIndex] = sideInput;
                 midDelayWriteIndex = (midDelayWriteIndex + 1) % 8192;
+                
+                left[s] = mid + side;
+                right[s] = mid - side;
             }
         }
 
-        // --- VULCAN STEALTH: HIGH-BAND HAAS & STATIC VHF AIR (> 4000Hz) ---
+        // --- VULCAN STEALTH: HIGH-BAND SIDE-CHANNEL HAAS & STATIC VHF AIR (> 4000Hz) ---
         if (i == 2 && bandBlock.getNumChannels() > 1 && currentSampleRate > 0.0) {
             int delaySamples = static_cast<int>(currentSampleRate * 0.0015f); // 1.5ms Static Delay
-            float* leftChannel = bandBlock.getChannelPointer(0);
-            float* rightChannel = bandBlock.getChannelPointer(1);
+            float* left = bandBlock.getChannelPointer(0);
+            float* right = bandBlock.getChannelPointer(1);
             
             for (size_t s = 0; s < bandBlock.getNumSamples(); ++s) {
-                float input = rightChannel[s];
+                float mid = 0.5f * (left[s] + right[s]);
+                float side = 0.5f * (left[s] - right[s]);
+                
+                float sideInput = side;
                 int readPos = delayWriteIndex - delaySamples;
                 if (readPos < 0) readPos += 8192;
-                rightChannel[s] = highBandDelayBuffer[readPos];
-                highBandDelayBuffer[delayWriteIndex] = input;
+                side = highBandDelayBuffer[readPos];
+                highBandDelayBuffer[delayWriteIndex] = sideInput;
                 delayWriteIndex = (delayWriteIndex + 1) % 8192;
 
                 float raw_noise = ((rng.nextFloat() * 2.0f) - 1.0f);
                 noiseHpfState = 0.85f * noiseHpfState + 0.15f * raw_noise;
                 float vhf_noise = (raw_noise - noiseHpfState) * 0.00005f; 
-
-                float mid = 0.5f * (leftChannel[s] + rightChannel[s]);
-                float side = 0.5f * (leftChannel[s] - rightChannel[s]);
                 side += vhf_noise;
-                leftChannel[s] = mid + side;
-                rightChannel[s] = mid - side;
+
+                left[s] = mid + side;
+                right[s] = mid - side;
             }
         }
 
@@ -285,23 +293,19 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
         const float driveFactor = 1.0f + (amount * 1.5f);
         const float baseDrive = juce::jmax(0.1f, driveFactor);
         
-        // --- VULCAN STEALTH: Asymmetric Component Mismatch & 2nd Order Overtones ---
-        const float driveL = baseDrive;
-        const float normL = std::tanh(driveL) + 0.032f * (std::tanh(driveL) * std::tanh(driveL));
-        const float driveR = baseDrive * 1.03f; 
-        const float normR = std::tanh(driveR) + 0.032f * (std::tanh(driveR) * std::tanh(driveR));
+        // --- VULCAN STEALTH: SYMMETRIC SATURATION ---
+        // Αφαιρέθηκε το asymmetric drive 1.03f για τέλεια μαθηματική ισορροπία καναλιών
+        const float drive = baseDrive;
+        const float norm = std::tanh(drive) + 0.032f * (std::tanh(drive) * std::tanh(drive));
 
         for (size_t ch = 0; ch < oversampledBlock.getNumChannels(); ++ch)
         {
             float* ptr = oversampledBlock.getChannelPointer(ch);
-            float currentDrive = (ch == 0) ? driveL : driveR;
-            float currentNorm = (ch == 0) ? normL : normR;
-
             for (size_t s = 0; s < oversampledBlock.getNumSamples(); ++s)
             {
-                float sat = std::tanh(ptr[s] * currentDrive);
+                float sat = std::tanh(ptr[s] * drive);
                 float asymmetric = sat + 0.032f * (sat * sat) * (sat >= 0.0f ? 1.0f : -1.0f);
-                ptr[s] = asymmetric / currentNorm;
+                ptr[s] = asymmetric / norm;
             }
         }
         
