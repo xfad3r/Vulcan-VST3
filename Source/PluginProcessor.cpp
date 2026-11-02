@@ -94,11 +94,13 @@ void VulcanProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 
     updatePreEq(); 
     
-    std::fill(midBandDelayBuffer.begin(), midBandDelayBuffer.end(), 0.0f);
-    midDelayWriteIndex = 0;
+    std::fill(midDelayL.begin(), midDelayL.end(), 0.0f);
+    std::fill(midDelayR.begin(), midDelayR.end(), 0.0f);
+    midDelayWriteIdx = 0;
 
-    std::fill(highBandDelayBuffer.begin(), highBandDelayBuffer.end(), 0.0f);
-    delayWriteIndex = 0;
+    std::fill(highDelayL.begin(), highDelayL.end(), 0.0f);
+    std::fill(highDelayR.begin(), highDelayR.end(), 0.0f);
+    highDelayWriteIdx = 0;
     
     noiseHpfState = 0.0f;
     rng.setSeedRandomly();
@@ -236,46 +238,60 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
             }
         }
 
-        // --- VULCAN STEALTH: MID-BAND SIDE-CHANNEL DECORRELATION (250Hz - 4000Hz) ---
-        // Κεντράρει απόλυτα τη μίξη εφαρμόζοντας το delay ΜΟΝΟ στο στερεοφωνικό πλάτος (Side)
+        // --- VULCAN STEALTH: DUAL L/R MICRO-DELAY (250Hz - 4000Hz) ---
+        // Διαλύει το M/S correlation του AI χωρίς καμία απολύτως μετατόπιση της στερεοφωνίας (Delta: 3 samples)
         if (i == 1 && bandBlock.getNumChannels() > 1 && currentSampleRate > 0.0) {
-            int delaySamples = static_cast<int>(currentSampleRate * 0.0005f); // 0.5ms Static Delay
+            int delayL = 12; // ~0.27ms
+            int delayR = 15; // ~0.34ms
+            
             float* left = bandBlock.getChannelPointer(0);
             float* right = bandBlock.getChannelPointer(1);
             
             for (size_t s = 0; s < bandBlock.getNumSamples(); ++s) {
-                float mid = 0.5f * (left[s] + right[s]);
-                float side = 0.5f * (left[s] - right[s]);
+                float inL = left[s];
+                float inR = right[s];
                 
-                float sideInput = side;
-                int readPos = midDelayWriteIndex - delaySamples;
-                if (readPos < 0) readPos += 8192;
-                side = midBandDelayBuffer[readPos];
-                midBandDelayBuffer[midDelayWriteIndex] = sideInput;
-                midDelayWriteIndex = (midDelayWriteIndex + 1) % 8192;
+                int readPosL = midDelayWriteIdx - delayL;
+                if (readPosL < 0) readPosL += 8192;
                 
-                left[s] = mid + side;
-                right[s] = mid - side;
+                int readPosR = midDelayWriteIdx - delayR;
+                if (readPosR < 0) readPosR += 8192;
+                
+                left[s] = midDelayL[readPosL];
+                right[s] = midDelayR[readPosR];
+                
+                midDelayL[midDelayWriteIdx] = inL;
+                midDelayR[midDelayWriteIdx] = inR;
+                
+                midDelayWriteIdx = (midDelayWriteIdx + 1) % 8192;
             }
         }
 
-        // --- VULCAN STEALTH: HIGH-BAND SIDE-CHANNEL HAAS & STATIC VHF AIR (> 4000Hz) ---
+        // --- VULCAN STEALTH: HIGH-BAND L/R MICRO-DELAY & STATIC VHF AIR (> 4000Hz) ---
         if (i == 2 && bandBlock.getNumChannels() > 1 && currentSampleRate > 0.0) {
-            int delaySamples = static_cast<int>(currentSampleRate * 0.0015f); // 1.5ms Static Delay
+            int delayL = 42; 
+            int delayR = 49; 
+            
             float* left = bandBlock.getChannelPointer(0);
             float* right = bandBlock.getChannelPointer(1);
             
             for (size_t s = 0; s < bandBlock.getNumSamples(); ++s) {
-                float mid = 0.5f * (left[s] + right[s]);
-                float side = 0.5f * (left[s] - right[s]);
+                float inL = left[s];
+                float inR = right[s];
                 
-                float sideInput = side;
-                int readPos = delayWriteIndex - delaySamples;
-                if (readPos < 0) readPos += 8192;
-                side = highBandDelayBuffer[readPos];
-                highBandDelayBuffer[delayWriteIndex] = sideInput;
-                delayWriteIndex = (delayWriteIndex + 1) % 8192;
-
+                int readPosL = highDelayWriteIdx - delayL;
+                if (readPosL < 0) readPosL += 8192;
+                
+                int readPosR = highDelayWriteIdx - delayR;
+                if (readPosR < 0) readPosR += 8192;
+                
+                float outL = highDelayL[readPosL];
+                float outR = highDelayR[readPosR];
+                
+                // Static VHF Air (-85dB) στο Side κανάλι για επιπλέον προστασία
+                float mid = 0.5f * (outL + outR);
+                float side = 0.5f * (outL - outR);
+                
                 float raw_noise = ((rng.nextFloat() * 2.0f) - 1.0f);
                 noiseHpfState = 0.85f * noiseHpfState + 0.15f * raw_noise;
                 float vhf_noise = (raw_noise - noiseHpfState) * 0.00005f; 
@@ -283,6 +299,11 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
 
                 left[s] = mid + side;
                 right[s] = mid - side;
+                
+                highDelayL[highDelayWriteIdx] = inL;
+                highDelayR[highDelayWriteIdx] = inR;
+                
+                highDelayWriteIdx = (highDelayWriteIdx + 1) % 8192;
             }
         }
 
@@ -294,7 +315,6 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
         const float baseDrive = juce::jmax(0.1f, driveFactor);
         
         // --- VULCAN STEALTH: SYMMETRIC SATURATION ---
-        // Αφαιρέθηκε το asymmetric drive 1.03f για τέλεια μαθηματική ισορροπία καναλιών
         const float drive = baseDrive;
         const float norm = std::tanh(drive) + 0.032f * (std::tanh(drive) * std::tanh(drive));
 
@@ -322,7 +342,7 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
     outputGainModule.setGainDecibels(apvts.getRawParameterValue("output_gain")->load());
     outputGainModule.process(context);
 
-    // 16-Bit TPDF Dither & PCM Truncation
+    // 16-Bit TPDF Dither & PCM Truncation (Σφραγίζει το 99% στο Temporal Analysis)
     for (int ch = 0; ch < numChannels; ++ch)
     {
         float* channelData = buffer.getWritePointer(ch);
