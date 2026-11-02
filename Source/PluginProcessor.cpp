@@ -7,11 +7,16 @@ VulcanProcessor::VulcanProcessor()
                       .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
       apvts (*this, nullptr, "Parameters", createParameterLayout())
 {
+    // --- ΠΡΟΣΘΗΚΗ ΝΕΩΝ PRESETS ---
     presets = {
-        { "01. Default / Clean",   0.0f,  0.0f,  0.0f,  0.0f, 0.0f, 0.0f,  0.0f },
-        { "02. Glue & Punch",      0.0f,  0.5f,  0.0f,  0.5f, 0.3f, 1.5f, -0.5f },
-        { "03. 808 Sub Enhancer",  0.0f,  1.5f, -0.5f,  0.5f, 0.6f, 2.5f, -1.0f },
-        { "04. Drill Aggression",  0.0f,  2.0f,  0.5f,  1.5f, 1.0f, 4.0f, -1.5f }
+        { "01. Default / Clean",      0.0f,  0.0f,  0.0f,  0.0f, 0.0f, 0.0f,  0.0f },
+        { "02. Glue & Punch",         0.0f,  0.5f,  0.0f,  0.5f, 0.3f, 1.5f, -0.5f },
+        { "03. 808 Sub Enhancer",     0.0f,  1.5f, -0.5f,  0.5f, 0.6f, 2.5f, -1.0f },
+        { "04. Drill Aggression",     0.0f,  2.0f,  0.5f,  1.5f, 1.0f, 4.0f, -1.5f },
+        { "05. Vocal Silk (Air)",     0.0f, -0.5f,  1.0f,  2.5f, 0.2f, 1.0f, -0.5f },
+        { "06. Analog Tape Warmth",   0.0f,  1.0f,  0.5f, -1.0f, 0.8f, 2.0f, -1.0f },
+        { "07. Master Polish",        0.0f,  0.5f,  0.5f,  1.0f, 0.15f,0.8f, -0.3f },
+        { "08. Lo-Fi Vibe",           0.0f,  2.0f, -1.0f, -3.0f, 1.5f, 3.0f, -1.5f }
     };
 
     for (int i = 0; i < 3; ++i) {
