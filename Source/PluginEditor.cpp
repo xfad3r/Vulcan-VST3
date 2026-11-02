@@ -4,17 +4,16 @@
 VulcanEditor::VulcanEditor (VulcanProcessor& p)
     : AudioProcessorEditor (&p), audioProcessor (p)
 {
-    // 1. Μεγαλύτερο, πιο άνετο μέγεθος παραθύρου
-    setSize (720, 450);
+    // Ακόμα μεγαλύτερο, άνετο μέγεθος παραθύρου
+    setSize (850, 500);
+    
+    // Εφαρμόζουμε το δικό μας L&F σε όλο το παράθυρο
+    setLookAndFeel(&customLookAndFeel);
 
-    // 2. Οργανικές/Serif γραμματοσειρές αντί για default sans-serif
-    customFont = juce::Font (juce::Font::getDefaultSerifFontName(), 17.0f, juce::Font::italic);
-    titleFont = juce::Font (juce::Font::getDefaultSerifFontName(), 46.0f, juce::Font::bold | juce::Font::italic);
-
-    // Custom χρώματα για τα Rotary Sliders (Ταιριάζουν με το Navy Blue)
-    getLookAndFeel().setColour (juce::Slider::thumbColourId, juce::Colour(0xff8c9eff));
-    getLookAndFeel().setColour (juce::Slider::rotarySliderFillColourId, juce::Colour(0xff4a5c88));
-    getLookAndFeel().setColour (juce::Slider::rotarySliderOutlineColourId, juce::Colour(0xff12182b));
+    // Σύγχρονες, flat, sans-serif γραμματοσειρές (Βιομηχανικό Look)
+    defaultFont = juce::Font (juce::Font::getDefaultSansSerifFontName(), 14.0f, juce::Font::bold);
+    titleFont = juce::Font (juce::Font::getDefaultSansSerifFontName(), 52.0f, juce::Font::bold);
+    subtitleFont = juce::Font (juce::Font::getDefaultSansSerifFontName(), 16.0f, juce::Font::plain);
 
     addAndMakeVisible(presetMenu);
     for (int i = 0; i < audioProcessor.getNumPrograms(); ++i)
@@ -23,27 +22,35 @@ VulcanEditor::VulcanEditor (VulcanProcessor& p)
     }
     presetMenu.setSelectedId(audioProcessor.getCurrentProgram() + 1, juce::dontSendNotification);
     presetMenu.addListener(this);
-    presetMenu.setLookAndFeel(&getLookAndFeel());
 
-    setupSlider (inGainSlider, inGainAtt, "input_gain");
-    setupSlider (eqLowSlider, eqLowAtt, "eq_low");
-    setupSlider (eqMidSlider, eqMidAtt, "eq_mid");
-    setupSlider (eqHighSlider, eqHighAtt, "eq_high");
-    setupSlider (amountSlider, amountAtt, "amount");
-    setupSlider (limDriveSlider, limDriveAtt, "limiter_drive");
-    setupSlider (outGainSlider, outGainAtt, "output_gain");
+    // Ορίζουμε ποια knobs είναι τα "Μεγάλα" (Character / Drive)
+    setupSlider (inGainSlider, inGainAtt, "input_gain", false);
+    setupSlider (eqLowSlider, eqLowAtt, "eq_low", false);
+    setupSlider (eqMidSlider, eqMidAtt, "eq_mid", false);
+    setupSlider (eqHighSlider, eqHighAtt, "eq_high", false);
+    
+    setupSlider (amountSlider, amountAtt, "amount", true); // Main Knob (Cyan)
+    setupSlider (limDriveSlider, limDriveAtt, "limiter_drive", true); // Main Knob (Cyan)
+    
+    setupSlider (outGainSlider, outGainAtt, "output_gain", false);
 }
 
-VulcanEditor::~VulcanEditor() {}
+VulcanEditor::~VulcanEditor() 
+{
+    setLookAndFeel(nullptr); // Καθαρισμός μνήμης L&F
+}
 
-void VulcanEditor::setupSlider (juce::Slider& slider, std::unique_ptr<SliderAttachment>& att, const juce::String& paramID)
+void VulcanEditor::setupSlider (juce::Slider& slider, std::unique_ptr<SliderAttachment>& att, const juce::String& paramID, bool isMainKnob)
 {
     slider.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
-    slider.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 65, 22);
     
-    // Αλλαγή γραμματοσειράς στο textbox του slider
-    slider.setLookAndFeel(&getLookAndFeel());
+    // Κρύβουμε τα textboxes των sliders (θα ζωγραφίσουμε μόνοι μας τα νούμερα ή δεν θα τα δείχνουμε, για πιο καθαρό look)
+    slider.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0); 
     
+    // Ονομάζουμε τα sliders για να ξέρει η drawRotarySlider τι χρώμα να βάλει
+    if (isMainKnob) slider.setName("main_knob"); 
+    else slider.setName("small_knob");
+
     addAndMakeVisible(slider);
     att = std::make_unique<SliderAttachment>(audioProcessor.getAPVTS(), paramID, slider);
 }
@@ -58,54 +65,64 @@ void VulcanEditor::comboBoxChanged (juce::ComboBox* comboBoxThatHasChanged)
 
 void VulcanEditor::paint (juce::Graphics& g)
 {
-    // 3. Βαθύ Μπλε Background Gradient (Midnight Blue to Navy)
-    juce::Colour colour1 = juce::Colour(0xff091121); // Σκούρο πάνω
-    juce::Colour colour2 = juce::Colour(0xff1a2c4c); // Ελαφρώς πιο ανοιχτό κάτω
+    // Βαθύ γκρι/μαύρο (Dark Theme - όπως το LoudBody)
+    g.fillAll (juce::Colour(0xff181818)); 
 
-    juce::ColourGradient bgGradient (colour1, 0, 0, colour2, 0, (float)getHeight(), false);
-    g.setGradientFill (bgGradient);
-    g.fillAll();
-
-    // Τίτλος
-    g.setColour (juce::Colours::white.withAlpha(0.9f));
+    // Τίτλος (Λευκό, Sans-Serif, Bold)
+    g.setColour (juce::Colours::white);
     g.setFont (titleFont);
-    g.drawFittedText ("VULCAN", getLocalBounds().removeFromTop(90), juce::Justification::centred, 1);
+    g.drawFittedText ("VULCAN", 0, 30, getWidth(), 60, juce::Justification::centred, 1);
     
-    // Υπότιτλος 
-    g.setFont (juce::Font(juce::Font::getDefaultSerifFontName(), 14.0f, juce::Font::plain));
-    g.setColour (juce::Colours::lightgrey.withAlpha(0.6f));
-    g.drawFittedText ("STEALTH MASTERING EDITION", getLocalBounds().removeFromTop(140), juce::Justification::centredBottom, 1);
+    // Υπότιτλος "by DJ Smartie"
+    g.setFont (subtitleFont);
+    g.setColour (juce::Colour(0xff888888)); // Γκρι
+    g.drawFittedText ("by DJ Smartie", 0, 85, getWidth(), 20, juce::Justification::centred, 1);
 
     // Labels των Knobs
-    g.setFont (customFont);
-    g.setColour (juce::Colour(0xffaab6cb)); // Απαλό γαλάζιο/γκρι για τα γράμματα
+    g.setFont (defaultFont);
+    g.setColour (juce::Colour(0xffaaaaaa)); // Γκρι ανοιχτό
     
-    int w = getWidth() / 7;
-    int y = 330; // Ύψος των labels
+    // Συντεταγμένες Labels
+    int smallW = 100;
+    int yBottom = 430; // Ύψος για τα κάτω labels
+    int yTop = 270;    // Ύψος για τα κεντρικά μεγάλα labels
+
+    g.drawFittedText ("IN", 50, yBottom, smallW, 20, juce::Justification::centred, 1);
+    g.drawFittedText ("LOW", 160, yBottom, smallW, 20, juce::Justification::centred, 1);
+    g.drawFittedText ("MID", 270, yBottom, smallW, 20, juce::Justification::centred, 1);
     
-    g.drawFittedText ("In Gain",  0 * w, y, w, 30, juce::Justification::centred, 1);
-    g.drawFittedText ("Low EQ",   1 * w, y, w, 30, juce::Justification::centred, 1);
-    g.drawFittedText ("Mid EQ",   2 * w, y, w, 30, juce::Justification::centred, 1);
-    g.drawFittedText ("High EQ",  3 * w, y, w, 30, juce::Justification::centred, 1);
-    g.drawFittedText ("Character",4 * w, y, w, 30, juce::Justification::centred, 1);
-    g.drawFittedText ("Drive",    5 * w, y, w, 30, juce::Justification::centred, 1);
-    g.drawFittedText ("Out Gain", 6 * w, y, w, 30, juce::Justification::centred, 1);
+    // Τα κεντρικά μεγάλα (Character & Drive)
+    g.drawFittedText ("CHARACTER", getWidth()/2 - 140, yTop, 120, 20, juce::Justification::centred, 1);
+    g.drawFittedText ("DRIVE", getWidth()/2 + 20, yTop, 120, 20, juce::Justification::centred, 1);
+
+    g.drawFittedText ("HIGH", 480, yBottom, smallW, 20, juce::Justification::centred, 1);
+    g.drawFittedText ("OUT", 590, yBottom, smallW, 20, juce::Justification::centred, 1);
+    
+    // Σχεδίαση ενός διαχωριστικού (γραμμής) κάτω από το menu
+    g.setColour(juce::Colour(0xff2a2a2a));
+    g.drawLine(0.0f, 170.0f, (float)getWidth(), 170.0f, 2.0f);
 }
 
 void VulcanEditor::resized()
 {
-    presetMenu.setBounds (getWidth() / 2 - 140, 105, 280, 28);
+    // Το Menu κάτω από τον υπότιτλο, κεντραρισμένο
+    presetMenu.setBounds (getWidth() / 2 - 125, 120, 250, 26);
 
-    int w = getWidth() / 7;
-    int size = juce::jmin(105, w - 10);
-    int startY = 210; // Ύψος των knobs
-    int yOffset = (w - size) / 2;
+    int smallSize = 75; // Μέγεθος μικρών knobs
+    int largeSize = 130; // Μέγεθος μεγάλων knobs
+    
+    int yBottomKnobs = 350;
+    int yTopKnobs = 190;
 
-    inGainSlider.setBounds   (0 * w + yOffset, startY, size, size);
-    eqLowSlider.setBounds    (1 * w + yOffset, startY, size, size);
-    eqMidSlider.setBounds    (2 * w + yOffset, startY, size, size);
-    eqHighSlider.setBounds   (3 * w + yOffset, startY, size, size);
-    amountSlider.setBounds   (4 * w + yOffset, startY, size, size);
-    limDriveSlider.setBounds (5 * w + yOffset, startY, size, size);
-    outGainSlider.setBounds  (6 * w + yOffset, startY, size, size);
+    // Τοποθέτηση μικρών Knobs (Κάτω σειρά)
+    inGainSlider.setBounds   (50, yBottomKnobs, smallSize, smallSize);
+    eqLowSlider.setBounds    (160, yBottomKnobs, smallSize, smallSize);
+    eqMidSlider.setBounds    (270, yBottomKnobs, smallSize, smallSize);
+    
+    eqHighSlider.setBounds   (480, yBottomKnobs, smallSize, smallSize);
+    outGainSlider.setBounds  (590, yBottomKnobs, smallSize, smallSize);
+
+    // Τοποθέτηση Μεγάλων Knobs (Κέντρο)
+    amountSlider.setBounds   (getWidth()/2 - 145, yTopKnobs - 50, largeSize, largeSize);
+    limDriveSlider.setBounds (getWidth()/2 + 15, yTopKnobs - 50, largeSize, largeSize);
 }
