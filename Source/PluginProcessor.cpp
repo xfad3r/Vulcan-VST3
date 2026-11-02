@@ -90,16 +90,11 @@ void VulcanProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 
     updatePreEq(); 
     
+    std::fill(midBandDelayBuffer.begin(), midBandDelayBuffer.end(), 0.0f);
+    midDelayWriteIndex = 0;
+
     std::fill(highBandDelayBuffer.begin(), highBandDelayBuffer.end(), 0.0f);
     delayWriteIndex = 0;
-    
-    std::fill(midDriftBufL.begin(), midDriftBufL.end(), 0.0f);
-    std::fill(midDriftBufR.begin(), midDriftBufR.end(), 0.0f);
-    midDriftWriteIdx = 0;
-    wowPhaseL = 0.0f;
-    wowPhaseR = 0.0f;
-    
-    std::fill(envState.begin(), envState.end(), 0.0f);
     
     noiseHpfState = 0.0f;
     rng.setSeedRandomly();
@@ -226,7 +221,7 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
         juce::dsp::AudioBlock<float> bandBlock(bandBuffers[i]);
         juce::dsp::ProcessContextReplacing<float> bandContext(bandBlock);
         
-        // --- VULCAN v70: LOW-BAND MONO LOCK (0-250Hz) ---
+        // --- VULCAN STEALTH: LOW-BAND MONO LOCK (0-250Hz) ---
         if (i == 0 && bandBlock.getNumChannels() > 1) {
             float* left = bandBlock.getChannelPointer(0);
             float* right = bandBlock.getChannelPointer(1);
@@ -237,51 +232,24 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
             }
         }
 
-        // --- VULCAN v70: TAPE MICRO-DRIFT (Linear Interpolation χωρίς παράγωγο) ---
+        // --- VULCAN STEALTH: MID-BAND STATIC HAAS DECORRELATION (250Hz - 4000Hz) ---
         if (i == 1 && bandBlock.getNumChannels() > 1 && currentSampleRate > 0.0) {
-            float* left = bandBlock.getChannelPointer(0);
-            float* right = bandBlock.getChannelPointer(1);
+            int delaySamples = static_cast<int>(currentSampleRate * 0.0005f); // 0.5ms Static Delay
+            float* rightChannel = bandBlock.getChannelPointer(1);
             
             for (size_t s = 0; s < bandBlock.getNumSamples(); ++s) {
-                midDriftBufL[midDriftWriteIdx] = left[s];
-                midDriftBufR[midDriftWriteIdx] = right[s];
-                
-                // Αργός, ομαλός φάκελος (Peak Follower) ΧΩΡΙΣ παράγωγο, άρα μηδέν FM παραμόρφωση/zipper noise
-                float mid = 0.5f * (left[s] + right[s]);
-                float abs_mid = std::abs(mid);
-                envState[i] += (abs_mid > envState[i]) ? 0.01f * (abs_mid - envState[i]) : 0.0005f * (abs_mid - envState[i]);
-                
-                // smooth_guard: Μειώνει το wow/flutter όταν ο ήχος είναι δυνατός για προστασία
-                float smooth_guard = std::exp(-5.0f * envState[i]);
-                
-                wowPhaseL += 2.0f * 3.14159f * 0.8f / currentSampleRate;
-                wowPhaseR += 2.0f * 3.14159f * 5.4f / currentSampleRate; // Flutter ταχύτητα για χαοτική ασυμμετρία
-                if (wowPhaseL > 6.2831853f) wowPhaseL -= 6.2831853f;
-                if (wowPhaseR > 6.2831853f) wowPhaseR -= 6.2831853f;
-                
-                float delaySamplesL = 10.0f + 6.0f * std::sin(wowPhaseL) * smooth_guard;
-                float delaySamplesR = 10.0f + 6.0f * std::sin(wowPhaseR) * smooth_guard;
-                
-                // Γραμμική Παρεμβολή (Αναλογικό "χρώμα", καταστροφικό για το AI grid)
-                auto processLinearDrift = [](float delay, int writeIdx, const std::array<float, 4096>& buf) {
-                    float rPos = (float)writeIdx - delay;
-                    if (rPos < 0.0f) rPos += 4096.0f;
-                    int idx0 = ((int)rPos) % 4096;
-                    int idx1 = (idx0 + 1) % 4096;
-                    float frac = rPos - std::floor(rPos);
-                    return buf[idx0] * (1.0f - frac) + buf[idx1] * frac;
-                };
-                
-                left[s] = processLinearDrift(delaySamplesL, midDriftWriteIdx, midDriftBufL);
-                right[s] = processLinearDrift(delaySamplesR, midDriftWriteIdx, midDriftBufR);
-                
-                midDriftWriteIdx = (midDriftWriteIdx + 1) % 4096;
+                float input = rightChannel[s];
+                int readPos = midDelayWriteIndex - delaySamples;
+                if (readPos < 0) readPos += 8192;
+                rightChannel[s] = midBandDelayBuffer[readPos];
+                midBandDelayBuffer[midDelayWriteIndex] = input;
+                midDelayWriteIndex = (midDelayWriteIndex + 1) % 8192;
             }
         }
 
-        // --- VULCAN v70: HIGH-BAND HAAS & STATIC VHF AIR ---
+        // --- VULCAN STEALTH: HIGH-BAND HAAS & STATIC VHF AIR (> 4000Hz) ---
         if (i == 2 && bandBlock.getNumChannels() > 1 && currentSampleRate > 0.0) {
-            int delaySamples = static_cast<int>(currentSampleRate * 0.0015f); 
+            int delaySamples = static_cast<int>(currentSampleRate * 0.0015f); // 1.5ms Static Delay
             float* leftChannel = bandBlock.getChannelPointer(0);
             float* rightChannel = bandBlock.getChannelPointer(1);
             
@@ -312,7 +280,7 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
         const float driveFactor = 1.0f + (amount * 1.5f);
         const float baseDrive = juce::jmax(0.1f, driveFactor);
         
-        // --- VULCAN v70: Asymmetric Component Mismatch & 2nd Order Overtones ---
+        // --- VULCAN STEALTH: Asymmetric Component Mismatch & 2nd Order Overtones ---
         const float driveL = baseDrive;
         const float normL = std::tanh(driveL) + 0.032f * (std::tanh(driveL) * std::tanh(driveL));
         const float driveR = baseDrive * 1.03f; 
