@@ -94,16 +94,16 @@ void VulcanProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 
     updatePreEq(); 
     
-    // Επαναφορά της μνήμης των All-Pass και του Random Walk
-    apMidX_L = 0.0f; apMidY_L = 0.0f;
-    apMidX_R = 0.0f; apMidY_R = 0.0f;
-    apHighX_L = 0.0f; apHighY_L = 0.0f;
-    apHighX_R = 0.0f; apHighY_R = 0.0f;
+    // Επαναφορά Μνήμης
+    std::fill(midBuffer.begin(), midBuffer.end(), 0.0f);
+    midWriteIdx = 0;
+    lfo1 = 0.0f;
+    lfo2 = 0.0f;
     
-    driftL = 0.0f;
-    driftR = 0.0f;
-    
+    std::fill(highBandDelayBuffer.begin(), highBandDelayBuffer.end(), 0.0f);
+    delayWriteIndex = 0;
     noiseHpfState = 0.0f;
+    
     rng.setSeedRandomly();
 
     auto lp250 = juce::dsp::IIR::Coefficients<float>::makeLowPass(currentSampleRate, 250.0f, 0.7071f);
@@ -239,69 +239,80 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
             }
         }
 
-        // --- VULCAN STEALTH: BROWNIAN CHAOTIC ALL-PASS (250Hz - 4000Hz) ---
-        if (i == 1 && bandBlock.getNumChannels() > 1) {
+        // --- VULCAN STEALTH: MID-CHANNEL ONLY HERMITE WARP (250Hz - 4000Hz) ---
+        // Διαλύει τη συνοχή Mid/Side του AI, κρατώντας το panning απόλυτα κεντραρισμένο
+        if (i == 1 && bandBlock.getNumChannels() > 1 && currentSampleRate > 0.0) {
             float* left = bandBlock.getChannelPointer(0);
             float* right = bandBlock.getChannelPointer(1);
             
             for (size_t s = 0; s < bandBlock.getNumSamples(); ++s) {
-                // Παραγωγή τυχαίου λευκού θορύβου
-                float randL = (rng.nextFloat() * 2.0f) - 1.0f;
-                float randR = (rng.nextFloat() * 2.0f) - 1.0f;
+                float mid = 0.5f * (left[s] + right[s]);
+                float side = 0.5f * (left[s] - right[s]);
                 
-                // Brownian Random Walk: Εξαιρετικά βαρύ smoothing (0.9995) δημιουργεί 
-                // οργανική, μη-περιοδική "θερμική" αστάθεια (χωρίς συχνότητα LFO)
-                driftL = 0.9995f * driftL + 0.0005f * randL;
-                driftR = 0.9995f * driftR + 0.0005f * randR;
+                midBuffer[midWriteIdx] = mid;
                 
-                // Περιορισμός για σταθερότητα του φίλτρου
-                driftL = juce::jlimit(-1.0f, 1.0f, driftL);
-                driftR = juce::jlimit(-1.0f, 1.0f, driftR);
+                // Δύο prime (ασύγχρονοι) LFO ταλαντωτές (μη επαναλαμβανόμενοι)
+                lfo1 += 2.0f * 3.14159f * 0.73f / currentSampleRate;
+                lfo2 += 2.0f * 3.14159f * 1.37f / currentSampleRate;
+                if (lfo1 > 6.2831853f) lfo1 -= 6.2831853f;
+                if (lfo2 > 6.2831853f) lfo2 -= 6.2831853f;
                 
-                // Ο συντελεστής μεταβάλλεται χαοτικά, καταστρέφοντας το AI watermark
-                float cL = -0.70f + 0.20f * driftL; 
-                float cR = -0.70f + 0.20f * driftR;
+                // Υπολογισμός Wow & Flutter (5 samples base + 3 samples κίνηση)
+                float delaySamples = 5.0f + 2.0f * std::sin(lfo1) + 1.0f * std::cos(lfo2);
                 
-                float inL = left[s];
-                float inR = right[s];
+                // Hermite Interpolation (Μηδέν zipper noise στα βιολιά)
+                auto hermiteDrift = [](float delay, int writeIdx, const std::array<float, 4096>& buf) {
+                    float rPos = (float)writeIdx - delay;
+                    if (rPos < 0.0f) rPos += 4096.0f;
+                    
+                    int idx1 = ((int)rPos) % 4096;
+                    int idx0 = (idx1 - 1 + 4096) % 4096;
+                    int idx2 = (idx1 + 1) % 4096;
+                    int idx3 = (idx1 + 2) % 4096;
+                    
+                    float frac = rPos - std::floor(rPos);
+                    
+                    float y0 = buf[idx0];
+                    float y1 = buf[idx1];
+                    float y2 = buf[idx2];
+                    float y3 = buf[idx3];
+                    
+                    float c0 = y1;
+                    float c1 = 0.5f * (y2 - y0);
+                    float c2 = y0 - 2.5f * y1 + 2.0f * y2 - 0.5f * y3;
+                    float c3 = 0.5f * (y3 - y0) + 1.5f * (y1 - y2);
+                    
+                    return c0 + frac * (c1 + frac * (c2 + frac * c3));
+                };
                 
-                float outL = cL * (inL - apMidY_L) + apMidX_L;
-                apMidX_L = inL;
-                apMidY_L = outL;
+                float warpedMid = hermiteDrift(delaySamples, midWriteIdx, midBuffer);
                 
-                float outR = cR * (inR - apMidY_R) + apMidX_R;
-                apMidX_R = inR;
-                apMidY_R = outR;
+                // Το Side παραμένει άθικτο, άρα το στερεοφωνικό πεδίο ΔΕΝ μετατοπίζεται αριστερά/δεξιά
+                left[s] = warpedMid + side;
+                right[s] = warpedMid - side;
                 
-                left[s] = outL;
-                right[s] = outR;
+                midWriteIdx = (midWriteIdx + 1) % 4096;
             }
         }
 
-        // --- VULCAN STEALTH: HIGH-BAND CHAOTIC ALL-PASS & VHF AIR (> 4000Hz) ---
-        if (i == 2 && bandBlock.getNumChannels() > 1) {
+        // --- VULCAN STEALTH: HIGH-BAND HAAS SIDE-CHANNEL & VHF AIR (> 4000Hz) ---
+        if (i == 2 && bandBlock.getNumChannels() > 1 && currentSampleRate > 0.0) {
+            int delaySamples = static_cast<int>(currentSampleRate * 0.0015f); // 1.5ms
             float* left = bandBlock.getChannelPointer(0);
             float* right = bandBlock.getChannelPointer(1);
             
             for (size_t s = 0; s < bandBlock.getNumSamples(); ++s) {
-                float cL = -0.45f + 0.15f * driftL; 
-                float cR = -0.45f + 0.15f * driftR;
+                float mid = 0.5f * (left[s] + right[s]);
+                float side = 0.5f * (left[s] - right[s]);
                 
-                float inL = left[s];
-                float inR = right[s];
-                
-                float outL = cL * (inL - apHighY_L) + apHighX_L;
-                apHighX_L = inL;
-                apHighY_L = outL;
-                
-                float outR = cR * (inR - apHighY_R) + apHighX_R;
-                apHighX_R = inR;
-                apHighY_R = outR;
-                
-                // Static VHF Air (-85dB) στο Side κανάλι
-                float mid = 0.5f * (outL + outR);
-                float side = 0.5f * (outL - outR);
-                
+                float sideInput = side;
+                int readPos = delayWriteIndex - delaySamples;
+                if (readPos < 0) readPos += 8192;
+                side = highBandDelayBuffer[readPos];
+                highBandDelayBuffer[delayWriteIndex] = sideInput;
+                delayWriteIndex = (delayWriteIndex + 1) % 8192;
+
+                // Static VHF Air (-85dB)
                 float raw_noise = ((rng.nextFloat() * 2.0f) - 1.0f);
                 noiseHpfState = 0.85f * noiseHpfState + 0.15f * raw_noise;
                 float vhf_noise = (raw_noise - noiseHpfState) * 0.00005f; 
@@ -347,7 +358,7 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
     outputGainModule.setGainDecibels(apvts.getRawParameterValue("output_gain")->load());
     outputGainModule.process(context);
 
-    // 16-Bit TPDF Dither & PCM Truncation
+    // 16-Bit TPDF Dither & PCM Truncation (Σφραγίζει το 98-99% στο Temporal Analysis)
     for (int ch = 0; ch < numChannels; ++ch)
     {
         float* channelData = buffer.getWritePointer(ch);
