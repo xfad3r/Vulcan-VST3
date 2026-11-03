@@ -94,14 +94,14 @@ void VulcanProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 
     updatePreEq(); 
     
-    // Επαναφορά της μνήμης των All-Pass
+    // Επαναφορά της μνήμης των All-Pass και του Random Walk
     apMidX_L = 0.0f; apMidY_L = 0.0f;
     apMidX_R = 0.0f; apMidY_R = 0.0f;
     apHighX_L = 0.0f; apHighY_L = 0.0f;
     apHighX_R = 0.0f; apHighY_R = 0.0f;
     
-    wowPhaseL = 0.0f;
-    wowPhaseR = 0.0f;
+    driftL = 0.0f;
+    driftR = 0.0f;
     
     noiseHpfState = 0.0f;
     rng.setSeedRandomly();
@@ -239,23 +239,28 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
             }
         }
 
-        // --- VULCAN STEALTH: DYNAMIC CHAOTIC ALL-PASS SCRAMBLER (250Hz - 4000Hz) ---
-        if (i == 1 && bandBlock.getNumChannels() > 1 && currentSampleRate > 0.0) {
+        // --- VULCAN STEALTH: BROWNIAN CHAOTIC ALL-PASS (250Hz - 4000Hz) ---
+        if (i == 1 && bandBlock.getNumChannels() > 1) {
             float* left = bandBlock.getChannelPointer(0);
             float* right = bandBlock.getChannelPointer(1);
             
             for (size_t s = 0; s < bandBlock.getNumSamples(); ++s) {
-                // Χαοτικοί ταλαντωτές (μη επαναλαμβανόμενοι) που υπολογίζονται ΑΝΑ ΔΕΙΓΜΑ.
-                // Αυτό εξασφαλίζει απόλυτα ομαλή μετάβαση φάσης χωρίς κανένα κλικ (zipper noise).
-                wowPhaseL += 2.0f * 3.14159f * 0.45f / currentSampleRate; 
-                wowPhaseR += 2.0f * 3.14159f * 0.57f / currentSampleRate; 
-                if (wowPhaseL > 6.2831853f) wowPhaseL -= 6.2831853f;
-                if (wowPhaseR > 6.2831853f) wowPhaseR -= 6.2831853f;
+                // Παραγωγή τυχαίου λευκού θορύβου
+                float randL = (rng.nextFloat() * 2.0f) - 1.0f;
+                float randR = (rng.nextFloat() * 2.0f) - 1.0f;
                 
-                // Υπολογισμός των δυναμικών συντελεστών All-Pass. 
-                // Η φάση αναπνέει συνεχώς, καταστρέφοντας το pattern του AI, χωρίς να επηρεάζει την ένταση.
-                float cL = -0.75f + 0.2f * std::sin(wowPhaseL) * std::cos(wowPhaseL * 1.618f); 
-                float cR = -0.75f + 0.2f * std::sin(wowPhaseR) * std::cos(wowPhaseR * 1.414f);
+                // Brownian Random Walk: Εξαιρετικά βαρύ smoothing (0.9995) δημιουργεί 
+                // οργανική, μη-περιοδική "θερμική" αστάθεια (χωρίς συχνότητα LFO)
+                driftL = 0.9995f * driftL + 0.0005f * randL;
+                driftR = 0.9995f * driftR + 0.0005f * randR;
+                
+                // Περιορισμός για σταθερότητα του φίλτρου
+                driftL = juce::jlimit(-1.0f, 1.0f, driftL);
+                driftR = juce::jlimit(-1.0f, 1.0f, driftR);
+                
+                // Ο συντελεστής μεταβάλλεται χαοτικά, καταστρέφοντας το AI watermark
+                float cL = -0.70f + 0.20f * driftL; 
+                float cR = -0.70f + 0.20f * driftR;
                 
                 float inL = left[s];
                 float inR = right[s];
@@ -274,14 +279,13 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
         }
 
         // --- VULCAN STEALTH: HIGH-BAND CHAOTIC ALL-PASS & VHF AIR (> 4000Hz) ---
-        if (i == 2 && bandBlock.getNumChannels() > 1 && currentSampleRate > 0.0) {
+        if (i == 2 && bandBlock.getNumChannels() > 1) {
             float* left = bandBlock.getChannelPointer(0);
             float* right = bandBlock.getChannelPointer(1);
             
             for (size_t s = 0; s < bandBlock.getNumSamples(); ++s) {
-                // Χαοτικοί ταλαντωτές για τα πρίμα
-                float cL = -0.45f + 0.15f * std::sin(wowPhaseL * 1.5f); 
-                float cR = -0.45f + 0.15f * std::sin(wowPhaseR * 1.3f);
+                float cL = -0.45f + 0.15f * driftL; 
+                float cR = -0.45f + 0.15f * driftR;
                 
                 float inL = left[s];
                 float inR = right[s];
@@ -343,7 +347,7 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
     outputGainModule.setGainDecibels(apvts.getRawParameterValue("output_gain")->load());
     outputGainModule.process(context);
 
-    // 16-Bit TPDF Dither & PCM Truncation (Σφραγίζει το 98-99% στο Temporal Analysis)
+    // 16-Bit TPDF Dither & PCM Truncation
     for (int ch = 0; ch < numChannels; ++ch)
     {
         float* channelData = buffer.getWritePointer(ch);
