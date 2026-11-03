@@ -69,12 +69,16 @@ private:
     juce::dsp::Compressor<float> limiter;
     juce::dsp::Gain<float> outputGainModule;
     
-    // --- VULCAN STEALTH: 1st Order Static All-Pass Variables ---
+    // --- VULCAN STEALTH: 1st Order Static & Dynamic All-Pass Variables ---
     float apMidX_L = 0.0f, apMidY_L = 0.0f;
     float apMidX_R = 0.0f, apMidY_R = 0.0f;
     
     float apHighX_L = 0.0f, apHighY_L = 0.0f;
     float apHighX_R = 0.0f, apHighY_R = 0.0f;
+    
+    // Επαναφορά των μεταβλητών που έλειπαν για τους χαοτικούς ταλαντωτές
+    float wowPhaseL = 0.0f;
+    float wowPhaseR = 0.0f;
     
     float noiseHpfState = 0.0f;
     juce::Random rng;
