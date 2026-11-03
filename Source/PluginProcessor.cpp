@@ -94,13 +94,11 @@ void VulcanProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 
     updatePreEq(); 
     
-    std::fill(midDelayL.begin(), midDelayL.end(), 0.0f);
-    std::fill(midDelayR.begin(), midDelayR.end(), 0.0f);
-    midDelayWriteIdx = 0;
-
-    std::fill(highDelayL.begin(), highDelayL.end(), 0.0f);
-    std::fill(highDelayR.begin(), highDelayR.end(), 0.0f);
-    highDelayWriteIdx = 0;
+    // Επαναφορά της μνήμης των All-Pass
+    apMidX_L = 0.0f; apMidY_L = 0.0f;
+    apMidX_R = 0.0f; apMidY_R = 0.0f;
+    apHighX_L = 0.0f; apHighY_L = 0.0f;
+    apHighX_R = 0.0f; apHighY_R = 0.0f;
     
     noiseHpfState = 0.0f;
     rng.setSeedRandomly();
@@ -238,57 +236,55 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
             }
         }
 
-        // --- VULCAN STEALTH: DUAL L/R MICRO-DELAY (250Hz - 4000Hz) ---
-        // Διαλύει το M/S correlation του AI χωρίς καμία απολύτως μετατόπιση της στερεοφωνίας (Delta: 3 samples)
-        if (i == 1 && bandBlock.getNumChannels() > 1 && currentSampleRate > 0.0) {
-            int delayL = 12; // ~0.27ms
-            int delayR = 15; // ~0.34ms
-            
+        // --- VULCAN STEALTH: MID-BAND STATIC ALL-PASS SCRAMBLER (250Hz - 4000Hz) ---
+        // Κεντράρει 100% τη μίξη. Διαλύει τη γραμμική σχέση φάσης. Το AI cross-correlation καταρρέει.
+        if (i == 1 && bandBlock.getNumChannels() > 1) {
             float* left = bandBlock.getChannelPointer(0);
             float* right = bandBlock.getChannelPointer(1);
+            
+            // Συντελεστές 1st order All-Pass (Αριστερά ~1000Hz, Δεξιά ~2500Hz)
+            const float cL = -0.86f; 
+            const float cR = -0.72f; 
             
             for (size_t s = 0; s < bandBlock.getNumSamples(); ++s) {
                 float inL = left[s];
                 float inR = right[s];
                 
-                int readPosL = midDelayWriteIdx - delayL;
-                if (readPosL < 0) readPosL += 8192;
+                float outL = cL * (inL - apMidY_L) + apMidX_L;
+                apMidX_L = inL;
+                apMidY_L = outL;
                 
-                int readPosR = midDelayWriteIdx - delayR;
-                if (readPosR < 0) readPosR += 8192;
+                float outR = cR * (inR - apMidY_R) + apMidX_R;
+                apMidX_R = inR;
+                apMidY_R = outR;
                 
-                left[s] = midDelayL[readPosL];
-                right[s] = midDelayR[readPosR];
-                
-                midDelayL[midDelayWriteIdx] = inL;
-                midDelayR[midDelayWriteIdx] = inR;
-                
-                midDelayWriteIdx = (midDelayWriteIdx + 1) % 8192;
+                left[s] = outL;
+                right[s] = outR;
             }
         }
 
-        // --- VULCAN STEALTH: HIGH-BAND L/R MICRO-DELAY & STATIC VHF AIR (> 4000Hz) ---
-        if (i == 2 && bandBlock.getNumChannels() > 1 && currentSampleRate > 0.0) {
-            int delayL = 42; 
-            int delayR = 49; 
-            
+        // --- VULCAN STEALTH: HIGH-BAND STATIC ALL-PASS & VHF AIR (> 4000Hz) ---
+        if (i == 2 && bandBlock.getNumChannels() > 1) {
             float* left = bandBlock.getChannelPointer(0);
             float* right = bandBlock.getChannelPointer(1);
+            
+            // Συντελεστές για τα πρίμα
+            const float cL = -0.45f; 
+            const float cR = -0.21f;
             
             for (size_t s = 0; s < bandBlock.getNumSamples(); ++s) {
                 float inL = left[s];
                 float inR = right[s];
                 
-                int readPosL = highDelayWriteIdx - delayL;
-                if (readPosL < 0) readPosL += 8192;
+                float outL = cL * (inL - apHighY_L) + apHighX_L;
+                apHighX_L = inL;
+                apHighY_L = outL;
                 
-                int readPosR = highDelayWriteIdx - delayR;
-                if (readPosR < 0) readPosR += 8192;
+                float outR = cR * (inR - apHighY_R) + apHighX_R;
+                apHighX_R = inR;
+                apHighY_R = outR;
                 
-                float outL = highDelayL[readPosL];
-                float outR = highDelayR[readPosR];
-                
-                // Static VHF Air (-85dB) στο Side κανάλι για επιπλέον προστασία
+                // Static VHF Air (-85dB) στο Side κανάλι
                 float mid = 0.5f * (outL + outR);
                 float side = 0.5f * (outL - outR);
                 
@@ -299,11 +295,6 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
 
                 left[s] = mid + side;
                 right[s] = mid - side;
-                
-                highDelayL[highDelayWriteIdx] = inL;
-                highDelayR[highDelayWriteIdx] = inR;
-                
-                highDelayWriteIdx = (highDelayWriteIdx + 1) % 8192;
             }
         }
 
