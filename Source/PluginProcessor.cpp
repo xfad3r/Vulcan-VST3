@@ -100,6 +100,9 @@ void VulcanProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     apHighX_L = 0.0f; apHighY_L = 0.0f;
     apHighX_R = 0.0f; apHighY_R = 0.0f;
     
+    wowPhaseL = 0.0f;
+    wowPhaseR = 0.0f;
+    
     noiseHpfState = 0.0f;
     rng.setSeedRandomly();
 
@@ -236,17 +239,24 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
             }
         }
 
-        // --- VULCAN STEALTH: MID-BAND STATIC ALL-PASS SCRAMBLER (250Hz - 4000Hz) ---
-        // Κεντράρει 100% τη μίξη. Διαλύει τη γραμμική σχέση φάσης. Το AI cross-correlation καταρρέει.
-        if (i == 1 && bandBlock.getNumChannels() > 1) {
+        // --- VULCAN STEALTH: DYNAMIC CHAOTIC ALL-PASS SCRAMBLER (250Hz - 4000Hz) ---
+        if (i == 1 && bandBlock.getNumChannels() > 1 && currentSampleRate > 0.0) {
             float* left = bandBlock.getChannelPointer(0);
             float* right = bandBlock.getChannelPointer(1);
             
-            // Συντελεστές 1st order All-Pass (Αριστερά ~1000Hz, Δεξιά ~2500Hz)
-            const float cL = -0.86f; 
-            const float cR = -0.72f; 
-            
             for (size_t s = 0; s < bandBlock.getNumSamples(); ++s) {
+                // Χαοτικοί ταλαντωτές (μη επαναλαμβανόμενοι) που υπολογίζονται ΑΝΑ ΔΕΙΓΜΑ.
+                // Αυτό εξασφαλίζει απόλυτα ομαλή μετάβαση φάσης χωρίς κανένα κλικ (zipper noise).
+                wowPhaseL += 2.0f * 3.14159f * 0.45f / currentSampleRate; 
+                wowPhaseR += 2.0f * 3.14159f * 0.57f / currentSampleRate; 
+                if (wowPhaseL > 6.2831853f) wowPhaseL -= 6.2831853f;
+                if (wowPhaseR > 6.2831853f) wowPhaseR -= 6.2831853f;
+                
+                // Υπολογισμός των δυναμικών συντελεστών All-Pass. 
+                // Η φάση αναπνέει συνεχώς, καταστρέφοντας το pattern του AI, χωρίς να επηρεάζει την ένταση.
+                float cL = -0.75f + 0.2f * std::sin(wowPhaseL) * std::cos(wowPhaseL * 1.618f); 
+                float cR = -0.75f + 0.2f * std::sin(wowPhaseR) * std::cos(wowPhaseR * 1.414f);
+                
                 float inL = left[s];
                 float inR = right[s];
                 
@@ -263,16 +273,16 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
             }
         }
 
-        // --- VULCAN STEALTH: HIGH-BAND STATIC ALL-PASS & VHF AIR (> 4000Hz) ---
-        if (i == 2 && bandBlock.getNumChannels() > 1) {
+        // --- VULCAN STEALTH: HIGH-BAND CHAOTIC ALL-PASS & VHF AIR (> 4000Hz) ---
+        if (i == 2 && bandBlock.getNumChannels() > 1 && currentSampleRate > 0.0) {
             float* left = bandBlock.getChannelPointer(0);
             float* right = bandBlock.getChannelPointer(1);
             
-            // Συντελεστές για τα πρίμα
-            const float cL = -0.45f; 
-            const float cR = -0.21f;
-            
             for (size_t s = 0; s < bandBlock.getNumSamples(); ++s) {
+                // Χαοτικοί ταλαντωτές για τα πρίμα
+                float cL = -0.45f + 0.15f * std::sin(wowPhaseL * 1.5f); 
+                float cR = -0.45f + 0.15f * std::sin(wowPhaseR * 1.3f);
+                
                 float inL = left[s];
                 float inR = right[s];
                 
@@ -333,7 +343,7 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
     outputGainModule.setGainDecibels(apvts.getRawParameterValue("output_gain")->load());
     outputGainModule.process(context);
 
-    // 16-Bit TPDF Dither & PCM Truncation (Σφραγίζει το 99% στο Temporal Analysis)
+    // 16-Bit TPDF Dither & PCM Truncation (Σφραγίζει το 98-99% στο Temporal Analysis)
     for (int ch = 0; ch < numChannels; ++ch)
     {
         float* channelData = buffer.getWritePointer(ch);
