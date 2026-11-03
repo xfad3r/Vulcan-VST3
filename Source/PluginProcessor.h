@@ -69,14 +69,12 @@ private:
     juce::dsp::Compressor<float> limiter;
     juce::dsp::Gain<float> outputGainModule;
     
-    // --- VULCAN STEALTH: DUAL L/R MICRO-DELAY BUFFERS ---
-    std::array<float, 8192> midDelayL { 0.0f };
-    std::array<float, 8192> midDelayR { 0.0f };
-    int midDelayWriteIdx = 0;
-
-    std::array<float, 8192> highDelayL { 0.0f };
-    std::array<float, 8192> highDelayR { 0.0f };
-    int highDelayWriteIdx = 0;
+    // --- VULCAN STEALTH: 1st Order Static All-Pass Variables ---
+    float apMidX_L = 0.0f, apMidY_L = 0.0f;
+    float apMidX_R = 0.0f, apMidY_R = 0.0f;
+    
+    float apHighX_L = 0.0f, apHighY_L = 0.0f;
+    float apHighX_R = 0.0f, apHighY_R = 0.0f;
     
     float noiseHpfState = 0.0f;
     juce::Random rng;
