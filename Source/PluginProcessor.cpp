@@ -97,14 +97,6 @@ void VulcanProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 
     updatePreEq(); 
     
-    std::fill(delayMidL.begin(), delayMidL.end(), 0.0f);
-    std::fill(delayMidR.begin(), delayMidR.end(), 0.0f);
-    midIdxL = 0; midIdxR = 0;
-    
-    std::fill(delayHighL.begin(), delayHighL.end(), 0.0f);
-    std::fill(delayHighR.begin(), delayHighR.end(), 0.0f);
-    highIdxL = 0; highIdxR = 0;
-    
     noiseHpfState = 0.0f;
     rng.setSeedRandomly();
 
@@ -200,9 +192,7 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
 
     inputGainModule.process(context);
     updatePreEq();
-    
     updateCrossover();
-    
     preEqChain.process(context);
 
     float amount = apvts.getRawParameterValue("amount")->load();
@@ -250,98 +240,54 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
         juce::dsp::AudioBlock<float> bandBlock(bandBuffers[i]);
         juce::dsp::ProcessContextReplacing<float> bandContext(bandBlock);
         
-        // --- VULCAN STEALTH: DYNAMIC LOW-BAND MONO LOCK ---
-        if (i == 0 && bandBlock.getNumChannels() > 1) {
-            float* left = bandBlock.getChannelPointer(0);
-            float* right = bandBlock.getChannelPointer(1);
-            for (size_t s = 0; s < bandBlock.getNumSamples(); ++s) {
-                float mono = 0.5f * (left[s] + right[s]);
-                left[s] = mono;
-                right[s] = mono;
-            }
-        }
-
-        // --- VULCAN STEALTH: MICRO-PRIME L/R DELAY (MID) ---
-        // Διαφορά 4 samples (0.09ms). Αδύνατον να γίνει αντιληπτό ως panning. VU meters 100% ίσα.
-        if (i == 1 && bandBlock.getNumChannels() > 1 && currentSampleRate > 0.0) {
-            int delayL = 3; 
-            int delayR = 7; 
-            float* left = bandBlock.getChannelPointer(0);
-            float* right = bandBlock.getChannelPointer(1);
-            
-            for (size_t s = 0; s < bandBlock.getNumSamples(); ++s) {
-                float inL = left[s];
-                float inR = right[s];
-                
-                int readL = midIdxL - delayL;
-                if (readL < 0) readL += 8192;
-                left[s] = delayMidL[readL];
-                delayMidL[midIdxL] = inL;
-                midIdxL = (midIdxL + 1) % 8192;
-
-                int readR = midIdxR - delayR;
-                if (readR < 0) readR += 8192;
-                right[s] = delayMidR[readR];
-                delayMidR[midIdxR] = inR;
-                midIdxR = (midIdxR + 1) % 8192;
-            }
-        }
-
-        // --- VULCAN STEALTH: MICRO-PRIME L/R DELAY (HIGH) ---
-        if (i == 2 && bandBlock.getNumChannels() > 1 && currentSampleRate > 0.0) {
-            int delayL = 13; 
-            int delayR = 5; 
-            float* left = bandBlock.getChannelPointer(0);
-            float* right = bandBlock.getChannelPointer(1);
-            
-            for (size_t s = 0; s < bandBlock.getNumSamples(); ++s) {
-                float inL = left[s];
-                float inR = right[s];
-                
-                int readL = highIdxL - delayL;
-                if (readL < 0) readL += 8192;
-                left[s] = delayHighL[readL];
-                delayHighL[highIdxL] = inL;
-                highIdxL = (highIdxL + 1) % 8192;
-
-                int readR = highIdxR - delayR;
-                if (readR < 0) readR += 8192;
-                right[s] = delayHighR[readR];
-                delayHighR[highIdxR] = inR;
-                highIdxR = (highIdxR + 1) % 8192;
-                
-                float mid = 0.5f * (left[s] + right[s]);
-                float side = 0.5f * (left[s] - right[s]);
-                float raw_noise = ((rng.nextFloat() * 2.0f) - 1.0f);
-                noiseHpfState = 0.85f * noiseHpfState + 0.15f * raw_noise;
-                float vhf_noise = (raw_noise - noiseHpfState) * 0.00005f; 
-                side += vhf_noise;
-
-                left[s] = mid + side;
-                right[s] = mid - side;
-            }
-        }
-
         bandCompressors[i].process(bandContext);
-        
         auto oversampledBlock = oversamplers[i]->processSamplesUp(bandBlock);
         
         const float driveFactor = 1.0f + (amount * 1.5f);
-        const float baseDrive = juce::jmax(0.1f, driveFactor);
+        const float midDrive = juce::jmax(0.1f, driveFactor);
+        const float sideDrive = juce::jmax(0.1f, driveFactor * 1.35f); // 35% harder saturation on Side
         
-        // --- VULCAN STEALTH: PURE SYMMETRIC SATURATION ---
-        const float drive = baseDrive;
-        const float norm = std::tanh(drive) + 0.032f * (std::tanh(drive) * std::tanh(drive));
-
-        for (size_t ch = 0; ch < oversampledBlock.getNumChannels(); ++ch)
+        const float normMid = std::tanh(midDrive);
+        const float normSide = std::tanh(sideDrive) + 0.065f * (std::tanh(sideDrive) * std::tanh(sideDrive));
+        
+        float* left = oversampledBlock.getChannelPointer(0);
+        float* right = oversampledBlock.getChannelPointer(1);
+        
+        for (size_t s = 0; s < oversampledBlock.getNumSamples(); ++s)
         {
-            float* ptr = oversampledBlock.getChannelPointer(ch);
-            for (size_t s = 0; s < oversampledBlock.getNumSamples(); ++s)
-            {
-                float sat = std::tanh(ptr[s] * drive);
-                float asymmetric = sat + 0.032f * (sat * sat) * (sat >= 0.0f ? 1.0f : -1.0f);
-                ptr[s] = asymmetric / norm;
+            float inL = left[s];
+            float inR = right[s];
+            
+            // --- VULCAN STEALTH: DYNAMIC LOW-BAND MONO LOCK ---
+            if (i == 0) {
+                float mono = 0.5f * (inL + inR);
+                float sat = std::tanh(mono * midDrive) / normMid;
+                left[s] = sat;
+                right[s] = sat;
+                continue;
             }
+            
+            float mid = 0.5f * (inL + inR);
+            float side = 0.5f * (inL - inR);
+            
+            // --- VULCAN STEALTH: ASYMMETRIC M/S SATURATION (Zero-Time Domain) ---
+            // MID: Clean, punchy symmetric clipping. Transients stay 100% sharp.
+            float satMid = std::tanh(mid * midDrive) / normMid;
+            
+            // SIDE: Asymmetric Tube Harmonic injection. 
+            // Breaks the math of L/R AI generative cross-correlation matrices.
+            float rawSide = std::tanh(side * sideDrive);
+            float satSide = (rawSide + 0.065f * (rawSide * rawSide) * (rawSide >= 0.0f ? 1.0f : -1.0f)) / normSide;
+            
+            // VHF Air Masking on Highs
+            if (i == 2) {
+                float raw_noise = ((rng.nextFloat() * 2.0f) - 1.0f);
+                noiseHpfState = 0.85f * noiseHpfState + 0.15f * raw_noise;
+                satSide += (raw_noise - noiseHpfState) * 0.00008f; 
+            }
+            
+            left[s] = satMid + satSide;
+            right[s] = satMid - satSide;
         }
         
         oversamplers[i]->processSamplesDown(bandBlock);
@@ -357,7 +303,7 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
     outputGainModule.setGainDecibels(apvts.getRawParameterValue("output_gain")->load());
     outputGainModule.process(context);
 
-    // 16-Bit TPDF Dither & PCM Truncation
+    // 16-Bit TPDF Dither & PCM Truncation (Locks Temporal Score)
     for (int ch = 0; ch < numChannels; ++ch)
     {
         float* channelData = buffer.getWritePointer(ch);
