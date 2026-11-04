@@ -97,11 +97,13 @@ void VulcanProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 
     updatePreEq(); 
     
-    std::fill(sideDelayMid.begin(), sideDelayMid.end(), 0.0f);
-    sideDelayMidIdx = 0;
+    std::fill(delayMidL.begin(), delayMidL.end(), 0.0f);
+    std::fill(delayMidR.begin(), delayMidR.end(), 0.0f);
+    midIdxL = 0; midIdxR = 0;
     
-    std::fill(sideDelayHigh.begin(), sideDelayHigh.end(), 0.0f);
-    sideDelayHighIdx = 0;
+    std::fill(delayHighL.begin(), delayHighL.end(), 0.0f);
+    std::fill(delayHighR.begin(), delayHighR.end(), 0.0f);
+    highIdxL = 0; highIdxR = 0;
     
     noiseHpfState = 0.0f;
     rng.setSeedRandomly();
@@ -259,48 +261,57 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
             }
         }
 
-        // --- VULCAN STEALTH: M/S PURE INTEGER DELAY (MID) ---
-        // Καθυστέρηση *μόνο* στο Side. Το Mid περνάει τέλεια συγχρονισμένο.
-        // Panning L/R παραμένει απολύτως 100% κεντραρισμένο.
+        // --- VULCAN STEALTH: MICRO-PRIME L/R DELAY (MID) ---
+        // Διαφορά 4 samples (0.09ms). Αδύνατον να γίνει αντιληπτό ως panning. VU meters 100% ίσα.
         if (i == 1 && bandBlock.getNumChannels() > 1 && currentSampleRate > 0.0) {
-            int delaySamples = 23; 
+            int delayL = 3; 
+            int delayR = 7; 
             float* left = bandBlock.getChannelPointer(0);
             float* right = bandBlock.getChannelPointer(1);
             
             for (size_t s = 0; s < bandBlock.getNumSamples(); ++s) {
-                float mid = 0.5f * (left[s] + right[s]);
-                float side = 0.5f * (left[s] - right[s]);
+                float inL = left[s];
+                float inR = right[s];
                 
-                float sideIn = side;
-                int readPos = sideDelayMidIdx - delaySamples;
-                if (readPos < 0) readPos += 8192;
-                side = sideDelayMid[readPos];
-                sideDelayMid[sideDelayMidIdx] = sideIn;
-                sideDelayMidIdx = (sideDelayMidIdx + 1) % 8192;
-                
-                left[s] = mid + side;
-                right[s] = mid - side;
+                int readL = midIdxL - delayL;
+                if (readL < 0) readL += 8192;
+                left[s] = delayMidL[readL];
+                delayMidL[midIdxL] = inL;
+                midIdxL = (midIdxL + 1) % 8192;
+
+                int readR = midIdxR - delayR;
+                if (readR < 0) readR += 8192;
+                right[s] = delayMidR[readR];
+                delayMidR[midIdxR] = inR;
+                midIdxR = (midIdxR + 1) % 8192;
             }
         }
 
-        // --- VULCAN STEALTH: M/S PURE INTEGER DELAY (HIGH) ---
+        // --- VULCAN STEALTH: MICRO-PRIME L/R DELAY (HIGH) ---
         if (i == 2 && bandBlock.getNumChannels() > 1 && currentSampleRate > 0.0) {
-            int delaySamples = 41; 
+            int delayL = 13; 
+            int delayR = 5; 
             float* left = bandBlock.getChannelPointer(0);
             float* right = bandBlock.getChannelPointer(1);
             
             for (size_t s = 0; s < bandBlock.getNumSamples(); ++s) {
+                float inL = left[s];
+                float inR = right[s];
+                
+                int readL = highIdxL - delayL;
+                if (readL < 0) readL += 8192;
+                left[s] = delayHighL[readL];
+                delayHighL[highIdxL] = inL;
+                highIdxL = (highIdxL + 1) % 8192;
+
+                int readR = highIdxR - delayR;
+                if (readR < 0) readR += 8192;
+                right[s] = delayHighR[readR];
+                delayHighR[highIdxR] = inR;
+                highIdxR = (highIdxR + 1) % 8192;
+                
                 float mid = 0.5f * (left[s] + right[s]);
                 float side = 0.5f * (left[s] - right[s]);
-                
-                float sideIn = side;
-                int readPos = sideDelayHighIdx - delaySamples;
-                if (readPos < 0) readPos += 8192;
-                side = sideDelayHigh[readPos];
-                sideDelayHigh[sideDelayHighIdx] = sideIn;
-                sideDelayHighIdx = (sideDelayHighIdx + 1) % 8192;
-                
-                // Static VHF Air (-85dB)
                 float raw_noise = ((rng.nextFloat() * 2.0f) - 1.0f);
                 noiseHpfState = 0.85f * noiseHpfState + 0.15f * raw_noise;
                 float vhf_noise = (raw_noise - noiseHpfState) * 0.00005f; 
