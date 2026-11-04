@@ -69,11 +69,14 @@ private:
     juce::dsp::Compressor<float> limiter;
     juce::dsp::Gain<float> outputGainModule;
     
-    // --- VULCAN STEALTH: Mid-Channel Warp Variables ---
+    // --- VULCAN STEALTH: M/S Cross-Modulation Variables ---
     std::array<float, 4096> midBuffer { 0.0f };
-    int midWriteIdx = 0;
+    std::array<float, 4096> sideBuffer { 0.0f };
+    int msWriteIdx = 0;
+    
     float lfo1 = 0.0f;
     float lfo2 = 0.0f;
+    float lfo3 = 0.0f;
     
     // High-Band Air Variables
     std::array<float, 8192> highBandDelayBuffer { 0.0f };
