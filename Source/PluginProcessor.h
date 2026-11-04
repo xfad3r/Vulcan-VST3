@@ -69,9 +69,12 @@ private:
     juce::dsp::Compressor<float> limiter;
     juce::dsp::Gain<float> outputGainModule;
     
-    // --- VULCAN STEALTH: M/S Static All-Pass Variables ---
-    float apSideMidX = 0.0f, apSideMidY = 0.0f;
-    float apSideHighX = 0.0f, apSideHighY = 0.0f;
+    // --- VULCAN STEALTH: M/S Integer Delay Buffers ---
+    std::array<float, 8192> sideDelayMid { 0.0f };
+    int sideDelayMidIdx = 0;
+    
+    std::array<float, 8192> sideDelayHigh { 0.0f };
+    int sideDelayHighIdx = 0;
     
     float noiseHpfState = 0.0f;
     juce::Random rng;
