@@ -69,20 +69,14 @@ private:
     juce::dsp::Compressor<float> limiter;
     juce::dsp::Gain<float> outputGainModule;
     
-    // --- VULCAN STEALTH: M/S Cross-Modulation Variables ---
-    std::array<float, 4096> midBuffer { 0.0f };
-    std::array<float, 4096> sideBuffer { 0.0f };
-    int msWriteIdx = 0;
+    // --- VULCAN STEALTH: Cross-Band Haas Variables ---
+    std::array<float, 8192> midDelayBufferR { 0.0f };
+    int midDelayWriteIdxR = 0;
+
+    std::array<float, 8192> highDelayBufferL { 0.0f };
+    int highDelayWriteIdxL = 0;
     
-    float lfo1 = 0.0f;
-    float lfo2 = 0.0f;
-    float lfo3 = 0.0f;
-    
-    // High-Band Air Variables
-    std::array<float, 8192> highBandDelayBuffer { 0.0f };
-    int delayWriteIndex = 0;
     float noiseHpfState = 0.0f;
-    
     juce::Random rng;
 
     double currentSampleRate = 44100.0;
