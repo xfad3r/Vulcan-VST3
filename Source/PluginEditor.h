@@ -2,15 +2,11 @@
 #include <JuceHeader.h>
 #include "PluginProcessor.h"
 
-// -----------------------------------------------------------------------------
-// CUSTOM LOOK AND FEEL (Για να φτιάξουμε Knobs σαν του LoudBody)
-// -----------------------------------------------------------------------------
 class VulcanLookAndFeel : public juce::LookAndFeel_V4
 {
 public:
     VulcanLookAndFeel()
     {
-        // Χρώμα του dropdown menu (Σκούρο γκρι/μαύρο)
         setColour (juce::ComboBox::backgroundColourId, juce::Colour(0xff1e1e1e));
         setColour (juce::ComboBox::outlineColourId, juce::Colour(0xff333333));
         setColour (juce::ComboBox::textColourId, juce::Colours::white);
@@ -29,22 +25,17 @@ public:
         auto rw = radius * 2.0f;
         auto angle = rotaryStartAngle + sliderPosProportional * (rotaryEndAngle - rotaryStartAngle);
 
-        // 1. Το Background του Knob (Σκούρο Flat/Matte)
         g.setColour (juce::Colour (0xff121212)); 
         g.fillEllipse (rx, ry, rw, rw);
 
-        // 2. Το περίγραμμα του Knob (Ελαφρώς πιο ανοιχτό)
         g.setColour (juce::Colour (0xff2a2a2a));
         g.drawEllipse (rx, ry, rw, rw, 2.0f);
 
-        // 3. Το "άδειο" Track (Η διαδρομή που δεν έχει γεμίσει)
         juce::Path backgroundArc;
         backgroundArc.addCentredArc (centreX, centreY, radius, radius, 0.0f, rotaryStartAngle, rotaryEndAngle, true);
         g.setColour (juce::Colour (0xff333333));
         g.strokePath (backgroundArc, juce::PathStrokeType (4.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
 
-        // 4. Το "γεμάτο" Track (Το χρώμα!)
-        // Χρησιμοποιούμε Cyan (όπως το LoudBody) για Character/Drive, και Πορτοκαλί για τα υπόλοιπα.
         juce::Colour fillColour = slider.getName() == "main_knob" ? juce::Colour(0xff00ffcc) : juce::Colour(0xffff9900);
         
         juce::Path valueArc;
@@ -52,7 +43,6 @@ public:
         g.setColour (fillColour);
         g.strokePath (valueArc, juce::PathStrokeType (4.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
 
-        // 5. Η γραμμή ένδειξης (Pointer) μέσα στο Knob
         juce::Path p;
         auto pointerLength = radius * 0.33f;
         auto pointerThickness = 3.0f;
@@ -63,10 +53,6 @@ public:
     }
 };
 
-
-// -----------------------------------------------------------------------------
-// VULCAN EDITOR CLASS
-// -----------------------------------------------------------------------------
 class VulcanEditor : public juce::AudioProcessorEditor, private juce::ComboBox::Listener
 {
 public:
@@ -79,14 +65,14 @@ public:
 
 private:
     VulcanProcessor& audioProcessor;
-    VulcanLookAndFeel customLookAndFeel; // Εφαρμογή του custom look
+    VulcanLookAndFeel customLookAndFeel; 
 
     juce::ComboBox presetMenu;
 
     using SliderAttachment = juce::AudioProcessorValueTreeState::SliderAttachment;
 
-    juce::Slider inGainSlider, eqLowSlider, eqMidSlider, eqHighSlider, amountSlider, limDriveSlider, outGainSlider;
-    std::unique_ptr<SliderAttachment> inGainAtt, eqLowAtt, eqMidAtt, eqHighAtt, amountAtt, limDriveAtt, outGainAtt;
+    juce::Slider inGainSlider, eqLowSlider, monoFreqSlider, eqMidSlider, eqHighSlider, amountSlider, limDriveSlider, outGainSlider;
+    std::unique_ptr<SliderAttachment> inGainAtt, eqLowAtt, monoFreqAtt, eqMidAtt, eqHighAtt, amountAtt, limDriveAtt, outGainAtt;
 
     void setupSlider (juce::Slider& slider, std::unique_ptr<SliderAttachment>& att, const juce::String& paramID, bool isMainKnob);
     
