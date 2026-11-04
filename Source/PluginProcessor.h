@@ -69,12 +69,13 @@ private:
     juce::dsp::Compressor<float> limiter;
     juce::dsp::Gain<float> outputGainModule;
     
-    // --- VULCAN STEALTH: Cross-Band Haas Variables ---
-    std::array<float, 8192> midDelayBufferR { 0.0f };
-    int midDelayWriteIdxR = 0;
-
-    std::array<float, 8192> highDelayBufferL { 0.0f };
-    int highDelayWriteIdxL = 0;
+    // --- VULCAN STEALTH: Fractional Delay Buffers & Harmonic LFOs ---
+    std::array<float, 8192> midDelayL { 0.0f };
+    std::array<float, 8192> midDelayR { 0.0f };
+    int midWriteIdx = 0;
+    
+    float wowPhaseL = 0.0f;
+    float wowPhaseR = 0.0f;
     
     float noiseHpfState = 0.0f;
     juce::Random rng;
