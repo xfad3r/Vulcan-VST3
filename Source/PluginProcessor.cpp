@@ -97,16 +97,14 @@ void VulcanProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 
     updatePreEq(); 
     
-    std::fill(midDelayBufferR.begin(), midDelayBufferR.end(), 0.0f);
-    midDelayWriteIdxR = 0;
-
-    std::fill(highDelayBufferL.begin(), highDelayBufferL.end(), 0.0f);
-    highDelayWriteIdxL = 0;
+    apSideMidX = 0.0f;
+    apSideMidY = 0.0f;
+    apSideHighX = 0.0f;
+    apSideHighY = 0.0f;
     
     noiseHpfState = 0.0f;
     rng.setSeedRandomly();
 
-    // --- ΔΙΟΡΘΩΣΗ: Αρχικοποίηση των coefficients ΠΡΙΝ το .prepare() ---
     float initFreq = apvts.getRawParameterValue("mono_freq")->load();
     auto lpLow = juce::dsp::IIR::Coefficients<float>::makeLowPass(currentSampleRate, initFreq, 0.7071f);
     auto hpLow = juce::dsp::IIR::Coefficients<float>::makeHighPass(currentSampleRate, initFreq, 0.7071f);
@@ -260,44 +258,46 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
             }
         }
 
-        // --- VULCAN STEALTH: PURE INTEGER CROSS-BAND HAAS (MID) ---
-        if (i == 1 && bandBlock.getNumChannels() > 1 && currentSampleRate > 0.0) {
-            int delaySamples = 23; 
+        // --- VULCAN STEALTH: MID-BAND SIDE ALL-PASS (No Haas Panning) ---
+        if (i == 1 && bandBlock.getNumChannels() > 1) {
+            float* left = bandBlock.getChannelPointer(0);
             float* right = bandBlock.getChannelPointer(1);
+            const float coeff = -0.72f; 
             
             for (size_t s = 0; s < bandBlock.getNumSamples(); ++s) {
-                float inR = right[s];
-                int readPos = midDelayWriteIdxR - delaySamples;
-                if (readPos < 0) readPos += 8192;
-                right[s] = midDelayBufferR[readPos];
-                midDelayBufferR[midDelayWriteIdxR] = inR;
-                midDelayWriteIdxR = (midDelayWriteIdxR + 1) % 8192;
+                float mid = 0.5f * (left[s] + right[s]);
+                float side = 0.5f * (left[s] - right[s]);
+                
+                float sideOut = coeff * (side - apSideMidY) + apSideMidX;
+                apSideMidX = side;
+                apSideMidY = sideOut;
+                
+                left[s] = mid + sideOut;
+                right[s] = mid - sideOut;
             }
         }
 
-        // --- VULCAN STEALTH: PURE INTEGER CROSS-BAND HAAS (HIGH) ---
-        if (i == 2 && bandBlock.getNumChannels() > 1 && currentSampleRate > 0.0) {
-            int delaySamples = 41; 
+        // --- VULCAN STEALTH: HIGH-BAND SIDE ALL-PASS & VHF AIR (No Haas Panning) ---
+        if (i == 2 && bandBlock.getNumChannels() > 1) {
             float* left = bandBlock.getChannelPointer(0);
             float* right = bandBlock.getChannelPointer(1);
+            const float coeff = -0.45f;
             
             for (size_t s = 0; s < bandBlock.getNumSamples(); ++s) {
-                float inL = left[s];
-                int readPos = highDelayWriteIdxL - delaySamples;
-                if (readPos < 0) readPos += 8192;
-                left[s] = highDelayBufferL[readPos];
-                highDelayBufferL[highDelayWriteIdxL] = inL;
-                highDelayWriteIdxL = (highDelayWriteIdxL + 1) % 8192;
-                
                 float mid = 0.5f * (left[s] + right[s]);
                 float side = 0.5f * (left[s] - right[s]);
+                
+                float sideOut = coeff * (side - apSideHighY) + apSideHighX;
+                apSideHighX = side;
+                apSideHighY = sideOut;
+                
                 float raw_noise = ((rng.nextFloat() * 2.0f) - 1.0f);
                 noiseHpfState = 0.85f * noiseHpfState + 0.15f * raw_noise;
                 float vhf_noise = (raw_noise - noiseHpfState) * 0.00005f; 
-                side += vhf_noise;
+                sideOut += vhf_noise;
 
-                left[s] = mid + side;
-                right[s] = mid - side;
+                left[s] = mid + sideOut;
+                right[s] = mid - sideOut;
             }
         }
 
