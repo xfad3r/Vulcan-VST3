@@ -95,11 +95,12 @@ void VulcanProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     updatePreEq(); 
     
     // Καθαρισμός Μνήμης
-    std::fill(midDelayBufferR.begin(), midDelayBufferR.end(), 0.0f);
-    midDelayWriteIdxR = 0;
-
-    std::fill(highDelayBufferL.begin(), highDelayBufferL.end(), 0.0f);
-    highDelayWriteIdxL = 0;
+    std::fill(midDelayL.begin(), midDelayL.end(), 0.0f);
+    std::fill(midDelayR.begin(), midDelayR.end(), 0.0f);
+    midWriteIdx = 0;
+    
+    wowPhaseL = 0.0f;
+    wowPhaseR = 0.0f;
     
     noiseHpfState = 0.0f;
     rng.setSeedRandomly();
@@ -237,39 +238,59 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
             }
         }
 
-        // --- VULCAN STEALTH: CROSS-BAND HAAS BALANCER (MID BAND) ---
-        // Καθυστέρηση ΜΟΝΟ στο Δεξί κανάλι στα Mids (Τραβάει τον ήχο αριστερά)
+        // --- VULCAN STEALTH: FRACTIONAL STATIC DELAY (250Hz - 4000Hz) ---
+        // Πολύ μικρή διαφορά φάσης (3.44 samples) κρύβει το grid χωρίς να χαλάει το stereo κέντρο.
+        // Το Hermite Interpolation καταστρέφει το Cross-Correlation που ψάχνει ακέραια samples.
         if (i == 1 && bandBlock.getNumChannels() > 1 && currentSampleRate > 0.0) {
-            int delayR = static_cast<int>(currentSampleRate * 0.0006f); // 0.6ms Static Haas
+            float delayL = 14.37f; 
+            float delayR = 17.81f; 
+            
+            float* left = bandBlock.getChannelPointer(0);
             float* right = bandBlock.getChannelPointer(1);
             
+            auto hermiteDrift = [](float delay, int writeIdx, const std::array<float, 8192>& buf) {
+                float rPos = (float)writeIdx - delay;
+                if (rPos < 0.0f) rPos += 8192.0f;
+                
+                int idx1 = ((int)rPos) % 8192;
+                int idx0 = (idx1 - 1 + 8192) % 8192;
+                int idx2 = (idx1 + 1) % 8192;
+                int idx3 = (idx1 + 2) % 8192;
+                
+                float frac = rPos - std::floor(rPos);
+                
+                float y0 = buf[idx0];
+                float y1 = buf[idx1];
+                float y2 = buf[idx2];
+                float y3 = buf[idx3];
+                
+                float c0 = y1;
+                float c1 = 0.5f * (y2 - y0);
+                float c2 = y0 - 2.5f * y1 + 2.0f * y2 - 0.5f * y3;
+                float c3 = 0.5f * (y3 - y0) + 1.5f * (y1 - y2);
+                
+                return c0 + frac * (c1 + frac * (c2 + frac * c3));
+            };
+            
             for (size_t s = 0; s < bandBlock.getNumSamples(); ++s) {
+                float inL = left[s];
                 float inR = right[s];
-                int readPos = midDelayWriteIdxR - delayR;
-                if (readPos < 0) readPos += 8192;
-                right[s] = midDelayBufferR[readPos];
-                midDelayBufferR[midDelayWriteIdxR] = inR;
-                midDelayWriteIdxR = (midDelayWriteIdxR + 1) % 8192;
+                
+                left[s] = hermiteDrift(delayL, midWriteIdx, midDelayL);
+                right[s] = hermiteDrift(delayR, midWriteIdx, midDelayR);
+                
+                midDelayL[midWriteIdx] = inL;
+                midDelayR[midWriteIdx] = inR;
+                midWriteIdx = (midWriteIdx + 1) % 8192;
             }
         }
-
-        // --- VULCAN STEALTH: CROSS-BAND HAAS BALANCER (HIGH BAND) ---
-        // Καθυστέρηση ΜΟΝΟ στο Αριστερό κανάλι στα Highs (Τραβάει τον ήχο δεξιά)
-        // Το συνολικό ακουστικό αποτέλεσμα είναι 100% κεντραρισμένο! Το AI βλέπει σπασμένη φάση παντού.
+        
+        // --- VULCAN STEALTH: HIGH-BAND STATIC VHF AIR (> 4000Hz) ---
         if (i == 2 && bandBlock.getNumChannels() > 1 && currentSampleRate > 0.0) {
-            int delayL = static_cast<int>(currentSampleRate * 0.0009f); // 0.9ms Static Haas
             float* left = bandBlock.getChannelPointer(0);
             float* right = bandBlock.getChannelPointer(1);
             
             for (size_t s = 0; s < bandBlock.getNumSamples(); ++s) {
-                float inL = left[s];
-                int readPos = highDelayWriteIdxL - delayL;
-                if (readPos < 0) readPos += 8192;
-                left[s] = highDelayBufferL[readPos];
-                highDelayBufferL[highDelayWriteIdxL] = inL;
-                highDelayWriteIdxL = (highDelayWriteIdxL + 1) % 8192;
-                
-                // Static VHF Air (-85dB) στο Side κανάλι
                 float mid = 0.5f * (left[s] + right[s]);
                 float side = 0.5f * (left[s] - right[s]);
                 
@@ -290,17 +311,32 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
         const float driveFactor = 1.0f + (amount * 1.5f);
         const float baseDrive = juce::jmax(0.1f, driveFactor);
         
-        // --- VULCAN STEALTH: SYMMETRIC SATURATION ---
-        const float drive = baseDrive;
-        const float norm = std::tanh(drive) + 0.032f * (std::tanh(drive) * std::tanh(drive));
-
+        // --- VULCAN STEALTH: HARMONIC WOW & FLUTTER (DYNAMIC ASYMMETRIC SATURATION) ---
+        // Αντί να κουνάμε τη φάση/χρόνο, κουνάμε το saturation. Το AI βλέπει 100% αναλογικές 
+        // μεταβολές αρμονικών και χάνει το Spectral Watermark, ενώ ο χρόνος μένει ανέγγιχτος (99% Temporal).
+        
         for (size_t ch = 0; ch < oversampledBlock.getNumChannels(); ++ch)
         {
             float* ptr = oversampledBlock.getChannelPointer(ch);
             for (size_t s = 0; s < oversampledBlock.getNumSamples(); ++s)
             {
-                float sat = std::tanh(ptr[s] * drive);
+                // Ασύγχρονοι ταλαντωτές ρεύματος/κορεσμού (Audio Rate)
+                if (ch == 0) {
+                    wowPhaseL += 2.0f * 3.14159f * 1.17f / (currentSampleRate * 2.0); // *2 λόγω oversampling
+                    if (wowPhaseL > 6.2831853f) wowPhaseL -= 6.2831853f;
+                } else {
+                    wowPhaseR += 2.0f * 3.14159f * 0.83f / (currentSampleRate * 2.0);
+                    if (wowPhaseR > 6.2831853f) wowPhaseR -= 6.2831853f;
+                }
+                
+                // Υπολογισμός δυναμικού Drive ανά κανάλι (έως +/- 15% διακύμανση)
+                float currentPhase = (ch == 0) ? wowPhaseL : wowPhaseR;
+                float dynamicDrive = baseDrive * (1.0f + 0.15f * std::sin(currentPhase));
+                
+                float norm = std::tanh(dynamicDrive) + 0.032f * (std::tanh(dynamicDrive) * std::tanh(dynamicDrive));
+                float sat = std::tanh(ptr[s] * dynamicDrive);
                 float asymmetric = sat + 0.032f * (sat * sat) * (sat >= 0.0f ? 1.0f : -1.0f);
+                
                 ptr[s] = asymmetric / norm;
             }
         }
@@ -318,7 +354,7 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
     outputGainModule.setGainDecibels(apvts.getRawParameterValue("output_gain")->load());
     outputGainModule.process(context);
 
-    // 16-Bit TPDF Dither & PCM Truncation (Σφραγίζει το 99% στο Temporal)
+    // 16-Bit TPDF Dither & PCM Truncation (Κρατάει το Temporal ψηλά)
     for (int ch = 0; ch < numChannels; ++ch)
     {
         float* channelData = buffer.getWritePointer(ch);
