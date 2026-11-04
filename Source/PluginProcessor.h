@@ -54,7 +54,6 @@ private:
 
     juce::dsp::ProcessorChain<StereoBiquad, StereoBiquad, StereoBiquad> preEqChain;
 
-    // Μετονομάστηκαν για να αντιπροσωπεύουν το δυναμικό Crossover
     juce::dsp::ProcessorChain<StereoBiquad, StereoBiquad> lpLowMid;
     juce::dsp::ProcessorChain<StereoBiquad, StereoBiquad> hpLowMid;
     juce::dsp::ProcessorChain<StereoBiquad, StereoBiquad> lp4000Chain;
@@ -70,12 +69,9 @@ private:
     juce::dsp::Compressor<float> limiter;
     juce::dsp::Gain<float> outputGainModule;
     
-    // --- VULCAN STEALTH: Pure Integer Haas Buffers ---
-    std::array<float, 8192> midDelayBufferR { 0.0f };
-    int midDelayWriteIdxR = 0;
-
-    std::array<float, 8192> highDelayBufferL { 0.0f };
-    int highDelayWriteIdxL = 0;
+    // --- VULCAN STEALTH: M/S Static All-Pass Variables ---
+    float apSideMidX = 0.0f, apSideMidY = 0.0f;
+    float apSideHighX = 0.0f, apSideHighY = 0.0f;
     
     float noiseHpfState = 0.0f;
     juce::Random rng;
