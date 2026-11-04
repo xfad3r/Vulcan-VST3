@@ -5,7 +5,7 @@
 
 struct Preset {
     juce::String name;
-    float inGain, eqLow, eqMid, eqHigh, amount, limDrive, outGain;
+    float inGain, eqLow, eqMid, eqHigh, monoFreq, amount, limDrive, outGain;
 };
 
 class VulcanProcessor : public juce::AudioProcessor
@@ -54,8 +54,9 @@ private:
 
     juce::dsp::ProcessorChain<StereoBiquad, StereoBiquad, StereoBiquad> preEqChain;
 
-    juce::dsp::ProcessorChain<StereoBiquad, StereoBiquad> lp250Chain;
-    juce::dsp::ProcessorChain<StereoBiquad, StereoBiquad> hp250Chain;
+    // Μετονομάστηκαν για να αντιπροσωπεύουν το δυναμικό Crossover
+    juce::dsp::ProcessorChain<StereoBiquad, StereoBiquad> lpLowMid;
+    juce::dsp::ProcessorChain<StereoBiquad, StereoBiquad> hpLowMid;
     juce::dsp::ProcessorChain<StereoBiquad, StereoBiquad> lp4000Chain;
     juce::dsp::ProcessorChain<StereoBiquad, StereoBiquad> hp4000Chain;
 
@@ -80,7 +81,10 @@ private:
     juce::Random rng;
 
     double currentSampleRate = 44100.0;
+    float currentMonoFreq = -1.0f;
+
     void updatePreEq();
+    void updateCrossover();
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (VulcanProcessor)
 };
