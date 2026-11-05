@@ -54,10 +54,13 @@ private:
 
     juce::dsp::ProcessorChain<StereoBiquad, StereoBiquad, StereoBiquad> preEqChain;
 
+    // Band 0 / Band 1 Fixed Crossover (200Hz Sub Mono Lock)
     juce::dsp::ProcessorChain<StereoBiquad, StereoBiquad> lpLowMid;
     juce::dsp::ProcessorChain<StereoBiquad, StereoBiquad> hpLowMid;
-    juce::dsp::ProcessorChain<StereoBiquad, StereoBiquad> lp4000Chain;
-    juce::dsp::ProcessorChain<StereoBiquad, StereoBiquad> hp4000Chain;
+
+    // Band 1 / Band 2 Dynamic Haas Balance Crossover (300Hz - 3500Hz via MONO HZ knob)
+    juce::dsp::ProcessorChain<StereoBiquad, StereoBiquad> lpMidHigh;
+    juce::dsp::ProcessorChain<StereoBiquad, StereoBiquad> hpMidHigh;
 
     juce::AudioBuffer<float> splitBuffer;
 
@@ -69,11 +72,18 @@ private:
     juce::dsp::Compressor<float> limiter;
     juce::dsp::Gain<float> outputGainModule;
     
+    // --- VULCAN STEALTH: Pure Integer Cross-Band Haas Buffers ---
+    std::array<float, 8192> midDelayBufferR { 0.0f };
+    int midDelayWriteIdxR = 0;
+
+    std::array<float, 8192> highDelayBufferL { 0.0f };
+    int highDelayWriteIdxL = 0;
+    
     float noiseHpfState = 0.0f;
     juce::Random rng;
 
     double currentSampleRate = 44100.0;
-    float currentMonoFreq = -1.0f;
+    float currentBalanceFreq = -1.0f;
 
     void updatePreEq();
     void updateCrossover();
