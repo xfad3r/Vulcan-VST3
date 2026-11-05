@@ -2,121 +2,134 @@
 #include "PluginEditor.h"
 
 VulcanEditor::VulcanEditor (VulcanProcessor& p)
-    : AudioProcessorEditor (&p), audioProcessor (p)
+    : AudioProcessorEditor (&p), audioProcessor (p), vuMeter(p)
 {
-    setSize (850, 500);
-    setLookAndFeel(&customLookAndFeel);
+    juce::LookAndFeel::setDefaultLookAndFeel(&customLookAndFeel);
 
-    defaultFont = juce::Font (juce::FontOptions(juce::Font::getDefaultSansSerifFontName(), 14.0f, juce::Font::bold));
-    titleFont = juce::Font (juce::FontOptions(juce::Font::getDefaultSansSerifFontName(), 52.0f, juce::Font::bold));
-    subtitleFont = juce::Font (juce::FontOptions(juce::Font::getDefaultSansSerifFontName(), 16.0f, juce::Font::plain));
+    // Titles
+    titleLabel.setText("VULCAN", juce::dontSendNotification);
+    titleLabel.setFont(juce::Font(48.0f, juce::Font::bold));
+    titleLabel.setJustificationType(juce::Justification::centred);
+    titleLabel.setColour(juce::Label::textColourId, juce::Colours::white);
+    addAndMakeVisible(titleLabel);
 
-    addAndMakeVisible(presetMenu);
+    subTitleLabel.setText("by DJ Smartie", juce::dontSendNotification);
+    subTitleLabel.setFont(juce::Font(18.0f, juce::Font::plain));
+    subTitleLabel.setJustificationType(juce::Justification::centred);
+    subTitleLabel.setColour(juce::Label::textColourId, juce::Colours::grey);
+    addAndMakeVisible(subTitleLabel);
+
+    // Presets
+    addAndMakeVisible(presetBox);
     for (int i = 0; i < audioProcessor.getNumPrograms(); ++i)
-    {
-        presetMenu.addItem(audioProcessor.getProgramName(i), i + 1);
-    }
-    presetMenu.setSelectedId(audioProcessor.getCurrentProgram() + 1, juce::dontSendNotification);
-    presetMenu.addListener(this);
+        presetBox.addItem(audioProcessor.getProgramName(i), i + 1);
+    
+    presetBox.setSelectedId(audioProcessor.getCurrentProgram() + 1, juce::dontSendNotification);
+    presetBox.onChange = [this]() {
+        audioProcessor.setCurrentProgram(presetBox.getSelectedId() - 1);
+    };
 
-    // 3 αριστερά μικρά knobs (IN, LOW, MONO HZ)
-    setupSlider (inGainSlider, inGainAtt, "input_gain", false);
-    setupSlider (eqLowSlider, eqLowAtt, "eq_low", false);
-    setupSlider (monoFreqSlider, monoFreqAtt, "mono_freq", false); // Το νέο ρυθμιστικό
+    // VU Meter
+    addAndMakeVisible(vuMeter);
+
+    // Knobs
+    setupSlider(inputGainSlider, inLabel, "IN", "input_gain");
+    setupSlider(eqLowSlider, lowLabel, "LOW", "eq_low");
+    setupSlider(eqMidSlider, midLabel, "MID", "eq_mid");
+    setupSlider(eqHighSlider, highLabel, "HIGH", "eq_high");
+    setupSlider(monoFreqSlider, monoLabel, "MONO HZ", "mono_freq");
+    setupSlider(amountSlider, amountLabel, "CHARACTER", "amount");
+    setupSlider(limiterDriveSlider, driveLabel, "DRIVE", "limiter_drive");
+    setupSlider(outputGainSlider, outLabel, "OUT", "output_gain");
     
-    // 2 κεντρικά μεγάλα knobs
-    setupSlider (amountSlider, amountAtt, "amount", true); 
-    setupSlider (limDriveSlider, limDriveAtt, "limiter_drive", true); 
-    
-    // 3 δεξιά μικρά knobs (MID, HIGH, OUT)
-    setupSlider (eqMidSlider, eqMidAtt, "eq_mid", false);
-    setupSlider (eqHighSlider, eqHighAtt, "eq_high", false);
-    setupSlider (outGainSlider, outGainAtt, "output_gain", false);
+    amountSlider.setName("Character");
+    limiterDriveSlider.setName("Drive");
+
+    // Attachments
+    inAttach = std::make_unique<Attachment>(audioProcessor.getAPVTS(), "input_gain", inputGainSlider);
+    lowAttach = std::make_unique<Attachment>(audioProcessor.getAPVTS(), "eq_low", eqLowSlider);
+    midAttach = std::make_unique<Attachment>(audioProcessor.getAPVTS(), "eq_mid", eqMidSlider);
+    highAttach = std::make_unique<Attachment>(audioProcessor.getAPVTS(), "eq_high", eqHighSlider);
+    monoAttach = std::make_unique<Attachment>(audioProcessor.getAPVTS(), "mono_freq", monoFreqSlider);
+    amountAttach = std::make_unique<Attachment>(audioProcessor.getAPVTS(), "amount", amountSlider);
+    driveAttach = std::make_unique<Attachment>(audioProcessor.getAPVTS(), "limiter_drive", limiterDriveSlider);
+    outAttach = std::make_unique<Attachment>(audioProcessor.getAPVTS(), "output_gain", outputGainSlider);
+
+    // Resized Window (760x480 gives plenty of breathing room)
+    setSize (760, 480);
 }
 
-VulcanEditor::~VulcanEditor() 
+VulcanEditor::~VulcanEditor()
 {
-    setLookAndFeel(nullptr); 
+    juce::LookAndFeel::setDefaultLookAndFeel(nullptr);
 }
 
-void VulcanEditor::setupSlider (juce::Slider& slider, std::unique_ptr<SliderAttachment>& att, const juce::String& paramID, bool isMainKnob)
+void VulcanEditor::setupSlider (juce::Slider& slider, juce::Label& label, const juce::String& text, const juce::String& /*paramID*/)
 {
-    slider.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
-    slider.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0); 
-    
-    if (isMainKnob) slider.setName("main_knob"); 
-    else slider.setName("small_knob");
-
     addAndMakeVisible(slider);
-    att = std::make_unique<SliderAttachment>(audioProcessor.getAPVTS(), paramID, slider);
-}
-
-void VulcanEditor::comboBoxChanged (juce::ComboBox* comboBoxThatHasChanged)
-{
-    if (comboBoxThatHasChanged == &presetMenu)
-    {
-        audioProcessor.setCurrentProgram(presetMenu.getSelectedId() - 1);
-    }
+    slider.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
+    slider.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
+    
+    addAndMakeVisible(label);
+    label.setText(text, juce::dontSendNotification);
+    label.setFont(juce::Font(14.0f, juce::Font::bold));
+    label.setJustificationType(juce::Justification::centred);
+    label.setColour(juce::Label::textColourId, juce::Colour(0xffaaaaaa));
 }
 
 void VulcanEditor::paint (juce::Graphics& g)
 {
-    g.fillAll (juce::Colour(0xff181818)); 
-
-    g.setColour (juce::Colours::white);
-    g.setFont (titleFont);
-    g.drawFittedText ("VULCAN", 0, 30, getWidth(), 60, juce::Justification::centred, 1);
+    g.fillAll (juce::Colour(0xff181a1f)); // Main background
     
-    g.setFont (subtitleFont);
-    g.setColour (juce::Colour(0xff888888)); 
-    g.drawFittedText ("by DJ Smartie", 0, 85, getWidth(), 20, juce::Justification::centred, 1);
-
-    g.setFont (defaultFont);
-    g.setColour (juce::Colour(0xffaaaaaa)); 
-    
-    int smallW = 100;
-    int yBottom = 430; 
-    int yTop = 270;    
-
-    // Αριστερά Labels
-    g.drawFittedText ("IN", 40, yBottom, smallW, 20, juce::Justification::centred, 1);
-    g.drawFittedText ("LOW", 150, yBottom, smallW, 20, juce::Justification::centred, 1);
-    g.drawFittedText ("MONO HZ", 260, yBottom, smallW, 20, juce::Justification::centred, 1); // Label ρυθμιστικού
-    
-    // Κεντρικά Μεγάλα Labels
-    g.drawFittedText ("CHARACTER", getWidth()/2 - 140, yTop, 120, 20, juce::Justification::centred, 1);
-    g.drawFittedText ("DRIVE", getWidth()/2 + 20, yTop, 120, 20, juce::Justification::centred, 1);
-
-    // Δεξιά Labels
-    g.drawFittedText ("MID", 500, yBottom, smallW, 20, juce::Justification::centred, 1);
-    g.drawFittedText ("HIGH", 610, yBottom, smallW, 20, juce::Justification::centred, 1);
-    g.drawFittedText ("OUT", 720, yBottom, smallW, 20, juce::Justification::centred, 1);
-    
-    g.setColour(juce::Colour(0xff2a2a2a));
-    g.drawLine(0.0f, 170.0f, (float)getWidth(), 170.0f, 2.0f);
+    // Header Separator Line
+    g.setColour(juce::Colour(0xff22252a));
+    g.fillRect(0, 110, getWidth(), 2);
 }
 
 void VulcanEditor::resized()
 {
-    presetMenu.setBounds (getWidth() / 2 - 125, 120, 250, 26);
-
-    int smallSize = 75; 
-    int largeSize = 130; 
+    auto area = getLocalBounds();
     
-    int yBottomKnobs = 350;
-    int yTopKnobs = 190;
+    titleLabel.setBounds(0, 15, getWidth(), 50);
+    subTitleLabel.setBounds(0, 55, getWidth(), 20);
+    
+    // Moved up and separated from large knobs
+    presetBox.setBounds(getWidth() / 2 - 125, 90, 250, 30);
 
-    // Τοποθέτηση μικρών Knobs (Αριστερά)
-    inGainSlider.setBounds   (40, yBottomKnobs, smallSize, smallSize);
-    eqLowSlider.setBounds    (150, yBottomKnobs, smallSize, smallSize);
-    monoFreqSlider.setBounds (260, yBottomKnobs, smallSize, smallSize);
+    int largeKnobSize = 130;
+    int smallKnobSize = 80;
+    int labelHeight = 25;
 
-    // Τοποθέτηση μικρών Knobs (Δεξιά)
-    eqMidSlider.setBounds    (500, yBottomKnobs, smallSize, smallSize);
-    eqHighSlider.setBounds   (610, yBottomKnobs, smallSize, smallSize);
-    outGainSlider.setBounds  (720, yBottomKnobs, smallSize, smallSize);
+    // Centered Large Knobs (Y = 150)
+    amountSlider.setBounds(getWidth() / 2 - 160, 150, largeKnobSize, largeKnobSize);
+    amountLabel.setBounds(amountSlider.getX(), amountSlider.getBottom(), largeKnobSize, labelHeight);
 
-    // Τοποθέτηση Μεγάλων Knobs (Κέντρο)
-    amountSlider.setBounds   (getWidth()/2 - 145, yTopKnobs - 50, largeSize, largeSize);
-    limDriveSlider.setBounds (getWidth()/2 + 15, yTopKnobs - 50, largeSize, largeSize);
+    limiterDriveSlider.setBounds(getWidth() / 2 + 30, 150, largeKnobSize, largeKnobSize);
+    driveLabel.setBounds(limiterDriveSlider.getX(), limiterDriveSlider.getBottom(), largeKnobSize, labelHeight);
+
+    // Bottom Row with Small Knobs (Y = 340)
+    int bottomRowY = 340;
+    
+    // Left Group
+    inputGainSlider.setBounds(40, bottomRowY, smallKnobSize, smallKnobSize);
+    inLabel.setBounds(inputGainSlider.getX(), inputGainSlider.getBottom(), smallKnobSize, labelHeight);
+
+    eqLowSlider.setBounds(140, bottomRowY, smallKnobSize, smallKnobSize);
+    lowLabel.setBounds(eqLowSlider.getX(), eqLowSlider.getBottom(), smallKnobSize, labelHeight);
+
+    monoFreqSlider.setBounds(240, bottomRowY, smallKnobSize, smallKnobSize);
+    monoLabel.setBounds(monoFreqSlider.getX(), monoFreqSlider.getBottom(), smallKnobSize, labelHeight);
+
+    // --- VU METER centered in the gap ---
+    vuMeter.setBounds(355, 335, 50, 95);
+
+    // Right Group
+    eqMidSlider.setBounds(440, bottomRowY, smallKnobSize, smallKnobSize);
+    midLabel.setBounds(eqMidSlider.getX(), eqMidSlider.getBottom(), smallKnobSize, labelHeight);
+
+    eqHighSlider.setBounds(540, bottomRowY, smallKnobSize, smallKnobSize);
+    highLabel.setBounds(eqHighSlider.getX(), eqHighSlider.getBottom(), smallKnobSize, labelHeight);
+
+    outputGainSlider.setBounds(640, bottomRowY, smallKnobSize, smallKnobSize);
+    outLabel.setBounds(outputGainSlider.getX(), outputGainSlider.getBottom(), smallKnobSize, labelHeight);
 }
