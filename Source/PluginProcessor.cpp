@@ -105,6 +105,9 @@ void VulcanProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     
     noiseHpfState = 0.0f;
     rng.setSeedRandomly();
+    
+    peakL.store(0.0f);
+    peakR.store(0.0f);
 
     float initMonoFreq = juce::jlimit(80.0f, 800.0f, apvts.getRawParameterValue("mono_freq")->load());
     currentMonoFreq = initMonoFreq;
@@ -330,6 +333,9 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
     outputGainModule.setGainDecibels(apvts.getRawParameterValue("output_gain")->load());
     outputGainModule.process(context);
 
+    float maxL = 0.0f;
+    float maxR = 0.0f;
+
     for (int ch = 0; ch < numChannels; ++ch)
     {
         float* channelData = buffer.getWritePointer(ch);
@@ -341,8 +347,21 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
             
             float sample = juce::jlimit(-1.0f, 1.0f, channelData[s] + dither);
             int pcm16 = static_cast<int>(sample * 32767.0f);
-            channelData[s] = static_cast<float>(pcm16) / 32767.0f;
+            float finalSample = static_cast<float>(pcm16) / 32767.0f;
+            channelData[s] = finalSample;
+            
+            if (ch == 0) maxL = juce::jmax(maxL, std::abs(finalSample));
+            if (ch == 1) maxR = juce::jmax(maxR, std::abs(finalSample));
         }
+    }
+    
+    // Update VU meters
+    if (numChannels >= 2) {
+        peakL.store(maxL);
+        peakR.store(maxR);
+    } else if (numChannels == 1) {
+        peakL.store(maxL);
+        peakR.store(maxL);
     }
 }
 
