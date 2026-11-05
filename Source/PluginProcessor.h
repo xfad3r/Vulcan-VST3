@@ -2,6 +2,7 @@
 #include <JuceHeader.h>
 #include <array>
 #include <cmath>
+#include <atomic>
 
 struct Preset {
     juce::String name;
@@ -38,6 +39,10 @@ public:
     void setStateInformation (const void* data, int sizeInBytes) override;
 
     juce::AudioProcessorValueTreeState& getAPVTS() { return apvts; }
+
+    // --- VU METER ATOMICS ---
+    std::atomic<float> peakL { 0.0f };
+    std::atomic<float> peakR { 0.0f };
 
 private:
     juce::AudioProcessorValueTreeState apvts;
