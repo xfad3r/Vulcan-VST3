@@ -257,8 +257,10 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
             }
         }
 
+        // --- VULCAN STEALTH: PURE INTEGER CROSS-BAND HAAS (BAND 1: 200Hz -> BalanceFreq) ---
+        // Μειώθηκε από 23 σε 11 samples για ελαχιστοποίηση της ψυχοακουστικής απόκλισης
         if (i == 1 && bandBlock.getNumChannels() > 1 && currentSampleRate > 0.0) {
-            int delaySamples = 23; 
+            int delaySamples = 11; 
             float* right = bandBlock.getChannelPointer(1);
             
             for (size_t s = 0; s < bandBlock.getNumSamples(); ++s) {
@@ -271,8 +273,10 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
             }
         }
 
+        // --- VULCAN STEALTH: PURE INTEGER CROSS-BAND HAAS (BAND 2: BalanceFreq -> 20kHz) ---
+        // Μειώθηκε από 41 σε 19 samples
         if (i == 2 && bandBlock.getNumChannels() > 1 && currentSampleRate > 0.0) {
-            int delaySamples = 41; 
+            int delaySamples = 19; 
             float* left = bandBlock.getChannelPointer(0);
             float* right = bandBlock.getChannelPointer(1);
             
