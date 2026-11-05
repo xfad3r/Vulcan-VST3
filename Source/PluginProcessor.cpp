@@ -8,14 +8,14 @@ VulcanProcessor::VulcanProcessor()
       apvts (*this, nullptr, "Parameters", createParameterLayout())
 {
     presets = {
-        { "01. Default / Clean",      0.0f,  0.0f,  0.0f,  0.0f, 1100.0f, 0.0f, 0.0f,  0.0f },
-        { "02. Glue & Punch",         0.0f,  0.5f,  0.0f,  0.5f, 1100.0f, 0.3f, 1.5f, -0.5f },
-        { "03. 808 Sub Enhancer",     0.0f,  1.5f, -0.5f,  0.5f,  950.0f, 0.6f, 2.5f, -1.0f },
-        { "04. Drill Aggression",     0.0f,  2.0f,  0.5f,  1.5f, 1000.0f, 1.0f, 4.0f, -1.5f },
-        { "05. Vocal Silk (Air)",     0.0f, -0.5f,  1.0f,  2.5f, 1200.0f, 0.2f, 1.0f, -0.5f },
-        { "06. Analog Tape Warmth",   0.0f,  1.0f,  0.5f, -1.0f, 1050.0f, 0.8f, 2.0f, -1.0f },
-        { "07. Master Polish",        0.0f,  0.5f,  0.5f,  1.0f, 1100.0f, 0.15f,0.8f, -0.3f },
-        { "08. Lo-Fi Vibe",           0.0f,  2.0f, -1.0f, -3.0f,  850.0f, 1.5f, 3.0f, -1.5f }
+        { "01. Default / Clean",      0.0f,  0.0f,  0.0f,  0.0f, 250.0f, 0.0f, 0.0f,  0.0f },
+        { "02. Glue & Punch",         0.0f,  0.5f,  0.0f,  0.5f, 250.0f, 0.3f, 1.5f, -0.5f },
+        { "03. 808 Sub Enhancer",     0.0f,  1.5f, -0.5f,  0.5f, 150.0f, 0.6f, 2.5f, -1.0f },
+        { "04. Drill Aggression",     0.0f,  2.0f,  0.5f,  1.5f, 300.0f, 1.0f, 4.0f, -1.5f },
+        { "05. Vocal Silk (Air)",     0.0f, -0.5f,  1.0f,  2.5f, 200.0f, 0.2f, 1.0f, -0.5f },
+        { "06. Analog Tape Warmth",   0.0f,  1.0f,  0.5f, -1.0f, 250.0f, 0.8f, 2.0f, -1.0f },
+        { "07. Master Polish",        0.0f,  0.5f,  0.5f,  1.0f, 250.0f, 0.15f,0.8f, -0.3f },
+        { "08. Lo-Fi Vibe",           0.0f,  2.0f, -1.0f, -3.0f, 400.0f, 1.5f, 3.0f, -1.5f }
     };
 
     for (int i = 0; i < 3; ++i) {
@@ -34,7 +34,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout VulcanProcessor::createParam
     params.push_back(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID("eq_low", 1), "Pre EQ Low (100Hz)", -12.0f, 12.0f, 0.0f));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID("eq_mid", 1), "Pre EQ Mid (2.5kHz)", -12.0f, 12.0f, 0.0f));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID("eq_high", 1), "Pre EQ High (10kHz)", -12.0f, 12.0f, 0.0f));
-    params.push_back(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID("mono_freq", 1), "Haas Balance Freq", 300.0f, 3500.0f, 1100.0f));
+    params.push_back(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID("mono_freq", 1), "Mono Lock Freq", 80.0f, 800.0f, 250.0f));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID("amount", 1), "Character Amount", 0.0f, 2.0f, 0.0f));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID("limiter_drive", 1), "Limiter Drive", 0.0f, 18.0f, 0.0f));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID("output_gain", 1), "Output Gain", -24.0f, 24.0f, 0.0f));
@@ -89,7 +89,7 @@ bool VulcanProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
 void VulcanProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
     currentSampleRate = sampleRate;
-    currentBalanceFreq = -1.0f;
+    currentMonoFreq = -1.0f; 
     juce::dsp::ProcessSpec spec;
     spec.sampleRate = sampleRate;
     spec.maximumBlockSize = static_cast<juce::uint32> (samplesPerBlock);
@@ -106,21 +106,21 @@ void VulcanProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     noiseHpfState = 0.0f;
     rng.setSeedRandomly();
 
-    auto lp200 = juce::dsp::IIR::Coefficients<float>::makeLowPass(currentSampleRate, 200.0f, 0.7071f);
-    auto hp200 = juce::dsp::IIR::Coefficients<float>::makeHighPass(currentSampleRate, 200.0f, 0.7071f);
-    lpLowMid.template get<0>().state = lp200;
-    lpLowMid.template get<1>().state = lp200;
-    hpLowMid.template get<0>().state = hp200;
-    hpLowMid.template get<1>().state = hp200;
+    float initMonoFreq = juce::jlimit(80.0f, 800.0f, apvts.getRawParameterValue("mono_freq")->load());
+    currentMonoFreq = initMonoFreq;
+    auto lpMono = juce::dsp::IIR::Coefficients<float>::makeLowPass(currentSampleRate, initMonoFreq, 0.7071f);
+    auto hpMono = juce::dsp::IIR::Coefficients<float>::makeHighPass(currentSampleRate, initMonoFreq, 0.7071f);
+    lpLowMid.template get<0>().state = lpMono;
+    lpLowMid.template get<1>().state = lpMono;
+    hpLowMid.template get<0>().state = hpMono;
+    hpLowMid.template get<1>().state = hpMono;
 
-    float initBalanceFreq = juce::jlimit(300.0f, 3500.0f, apvts.getRawParameterValue("mono_freq")->load());
-    currentBalanceFreq = initBalanceFreq;
-    auto lpMid = juce::dsp::IIR::Coefficients<float>::makeLowPass(currentSampleRate, initBalanceFreq, 0.7071f);
-    auto hpHigh = juce::dsp::IIR::Coefficients<float>::makeHighPass(currentSampleRate, initBalanceFreq, 0.7071f);
-    lpMidHigh.template get<0>().state = lpMid;
-    lpMidHigh.template get<1>().state = lpMid;
-    hpMidHigh.template get<0>().state = hpHigh;
-    hpMidHigh.template get<1>().state = hpHigh;
+    auto lpHaas = juce::dsp::IIR::Coefficients<float>::makeLowPass(currentSampleRate, 1000.0f, 0.7071f);
+    auto hpHaas = juce::dsp::IIR::Coefficients<float>::makeHighPass(currentSampleRate, 1000.0f, 0.7071f);
+    lpMidHigh.template get<0>().state = lpHaas;
+    lpMidHigh.template get<1>().state = lpHaas;
+    hpMidHigh.template get<0>().state = hpHaas;
+    hpMidHigh.template get<1>().state = hpHaas;
 
     inputGainModule.prepare(spec);
     preEqChain.prepare(spec);
@@ -172,15 +172,15 @@ void VulcanProcessor::updateCrossover()
 {
     if (currentSampleRate <= 0.0) return;
     
-    float targetFreq = juce::jlimit(300.0f, 3500.0f, apvts.getRawParameterValue("mono_freq")->load());
-    if (std::abs(targetFreq - currentBalanceFreq) > 0.5f) {
-        currentBalanceFreq = targetFreq;
+    float targetFreq = juce::jlimit(80.0f, 800.0f, apvts.getRawParameterValue("mono_freq")->load());
+    if (std::abs(targetFreq - currentMonoFreq) > 0.5f) {
+        currentMonoFreq = targetFreq;
         auto lp = juce::dsp::IIR::Coefficients<float>::makeLowPass(currentSampleRate, targetFreq, 0.7071f);
         auto hp = juce::dsp::IIR::Coefficients<float>::makeHighPass(currentSampleRate, targetFreq, 0.7071f);
-        lpMidHigh.template get<0>().state = lp;
-        lpMidHigh.template get<1>().state = lp;
-        hpMidHigh.template get<0>().state = hp;
-        hpMidHigh.template get<1>().state = hp;
+        lpLowMid.template get<0>().state = lp;
+        lpLowMid.template get<1>().state = lp;
+        hpLowMid.template get<0>().state = hp;
+        hpLowMid.template get<1>().state = hp;
     }
 }
 
@@ -257,8 +257,6 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
             }
         }
 
-        // --- VULCAN STEALTH: PURE INTEGER CROSS-BAND HAAS (BAND 1: 200Hz -> BalanceFreq) ---
-        // Μειώθηκε από 23 σε 11 samples για ελαχιστοποίηση της ψυχοακουστικής απόκλισης
         if (i == 1 && bandBlock.getNumChannels() > 1 && currentSampleRate > 0.0) {
             int delaySamples = 11; 
             float* right = bandBlock.getChannelPointer(1);
@@ -273,8 +271,6 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
             }
         }
 
-        // --- VULCAN STEALTH: PURE INTEGER CROSS-BAND HAAS (BAND 2: BalanceFreq -> 20kHz) ---
-        // Μειώθηκε από 41 σε 19 samples
         if (i == 2 && bandBlock.getNumChannels() > 1 && currentSampleRate > 0.0) {
             int delaySamples = 19; 
             float* left = bandBlock.getChannelPointer(0);
