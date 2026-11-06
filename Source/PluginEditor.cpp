@@ -29,15 +29,16 @@ VulcanEditor::VulcanEditor (VulcanProcessor& p)
 
     addAndMakeVisible(vuMeter);
 
-    setupSlider(inputGainSlider, inLabel, "IN", "input_gain");
-    setupSlider(eqLowSlider, lowLabel, "LOW", "eq_low");
-    setupSlider(eqMidSlider, midLabel, "MID", "eq_mid");
-    setupSlider(eqHighSlider, highLabel, "HIGH", "eq_high");
-    setupSlider(monoFreqSlider, monoLabel, "MONO HZ", "mono_freq");
-    setupSlider(haasSlider, haasLabel, "WIDTH", "haas_amount");
-    setupSlider(amountSlider, amountLabel, "CHARACTER", "amount");
-    setupSlider(limiterDriveSlider, driveLabel, "DRIVE", "limiter_drive");
-    setupSlider(outputGainSlider, outLabel, "OUT", "output_gain");
+    // Ορισμός των suffixes (μονάδες μέτρησης) για κάθε knob
+    setupSlider(inputGainSlider, inLabel, "IN", "input_gain", " dB");
+    setupSlider(eqLowSlider, lowLabel, "LOW", "eq_low", " dB");
+    setupSlider(eqMidSlider, midLabel, "MID", "eq_mid", " dB");
+    setupSlider(eqHighSlider, highLabel, "HIGH", "eq_high", " dB");
+    setupSlider(monoFreqSlider, monoLabel, "MONO HZ", "mono_freq", " Hz");
+    setupSlider(haasSlider, haasLabel, "WIDTH", "haas_amount", "");
+    setupSlider(amountSlider, amountLabel, "CHARACTER", "amount", "");
+    setupSlider(limiterDriveSlider, driveLabel, "DRIVE", "limiter_drive", " dB");
+    setupSlider(outputGainSlider, outLabel, "OUT", "output_gain", " dB");
     
     amountSlider.setName("Character");
     limiterDriveSlider.setName("Drive");
@@ -53,7 +54,6 @@ VulcanEditor::VulcanEditor (VulcanProcessor& p)
     driveAttach = std::make_unique<Attachment>(audioProcessor.getAPVTS(), "limiter_drive", limiterDriveSlider);
     outAttach = std::make_unique<Attachment>(audioProcessor.getAPVTS(), "output_gain", outputGainSlider);
 
-    // Έκανα το παράθυρο ελαφρώς πιο πλατύ για να χωρέσει το 8ο μικρό knob άνετα (800x480)
     setSize (800, 480);
 }
 
@@ -62,17 +62,23 @@ VulcanEditor::~VulcanEditor()
     juce::LookAndFeel::setDefaultLookAndFeel(nullptr);
 }
 
-void VulcanEditor::setupSlider (juce::Slider& slider, juce::Label& label, const juce::String& text, const juce::String& /*paramID*/)
+void VulcanEditor::setupSlider (juce::Slider& slider, juce::Label& label, const juce::String& text, const juce::String& /*paramID*/, const juce::String& suffix)
 {
     addAndMakeVisible(slider);
     slider.setSliderStyle(juce::Slider::RotaryHorizontalVerticalDrag);
-    slider.setTextBoxStyle(juce::Slider::NoTextBox, false, 0, 0);
+    
+    // Ενεργοποίηση και παραμετροποίηση του TextBox (της τιμής) κάτω από το knob
+    slider.setTextBoxStyle(juce::Slider::TextBoxBelow, false, 60, 20);
+    slider.setColour(juce::Slider::textBoxTextColourId, juce::Colour(0xffcccccc)); // Απαλό γκρι κείμενο
+    slider.setColour(juce::Slider::textBoxOutlineColourId, juce::Colour(0x00000000)); // Διαφανές περίγραμμα
+    slider.setTextValueSuffix(suffix);
+    slider.setNumDecimalPlacesToDisplay(1);
     
     addAndMakeVisible(label);
     label.setText(text, juce::dontSendNotification);
     label.setFont(juce::Font(14.0f, juce::Font::bold));
     label.setJustificationType(juce::Justification::centred);
-    label.setColour(juce::Label::textColourId, juce::Colour(0xffaaaaaa));
+    label.setColour(juce::Label::textColourId, juce::Colour(0xff888888));
 }
 
 void VulcanEditor::paint (juce::Graphics& g)
@@ -92,41 +98,44 @@ void VulcanEditor::resized()
     
     presetBox.setBounds(getWidth() / 2 - 125, 90, 250, 30);
 
-    int largeKnobSize = 130;
-    int smallKnobSize = 80;
-    int labelHeight = 25;
+    // Μεγεθύνθηκαν τα κουτιά των knobs (Y axis) για να χωρέσει το TextBox χωρίς να μικρύνει η γραφική ροδέλα
+    int largeSliderW = 130;
+    int largeSliderH = 155; 
+    int smallSliderW = 80;
+    int smallSliderH = 105; 
+    int labelHeight = 20;
 
-    amountSlider.setBounds(getWidth() / 2 - 160, 150, largeKnobSize, largeKnobSize);
-    amountLabel.setBounds(amountSlider.getX(), amountSlider.getBottom(), largeKnobSize, labelHeight);
+    amountSlider.setBounds(getWidth() / 2 - 160, 140, largeSliderW, largeSliderH);
+    amountLabel.setBounds(amountSlider.getX(), amountSlider.getBottom(), largeSliderW, labelHeight);
 
-    limiterDriveSlider.setBounds(getWidth() / 2 + 30, 150, largeKnobSize, largeKnobSize);
-    driveLabel.setBounds(limiterDriveSlider.getX(), limiterDriveSlider.getBottom(), largeKnobSize, labelHeight);
+    limiterDriveSlider.setBounds(getWidth() / 2 + 30, 140, largeSliderW, largeSliderH);
+    driveLabel.setBounds(limiterDriveSlider.getX(), limiterDriveSlider.getBottom(), largeSliderW, labelHeight);
 
-    int bottomRowY = 340;
+    int bottomRowY = 325;
     
     // Αριστερή Πλευρά: 4 Knobs (EQ + Input)
-    inputGainSlider.setBounds(25, bottomRowY, smallKnobSize, smallKnobSize);
-    inLabel.setBounds(inputGainSlider.getX(), inputGainSlider.getBottom(), smallKnobSize, labelHeight);
+    inputGainSlider.setBounds(25, bottomRowY, smallSliderW, smallSliderH);
+    inLabel.setBounds(inputGainSlider.getX(), inputGainSlider.getBottom(), smallSliderW, labelHeight);
 
-    eqLowSlider.setBounds(110, bottomRowY, smallKnobSize, smallKnobSize);
-    lowLabel.setBounds(eqLowSlider.getX(), eqLowSlider.getBottom(), smallKnobSize, labelHeight);
+    eqLowSlider.setBounds(110, bottomRowY, smallSliderW, smallSliderH);
+    lowLabel.setBounds(eqLowSlider.getX(), eqLowSlider.getBottom(), smallSliderW, labelHeight);
 
-    eqMidSlider.setBounds(195, bottomRowY, smallKnobSize, smallKnobSize);
-    midLabel.setBounds(eqMidSlider.getX(), eqMidSlider.getBottom(), smallKnobSize, labelHeight);
+    eqMidSlider.setBounds(195, bottomRowY, smallSliderW, smallSliderH);
+    midLabel.setBounds(eqMidSlider.getX(), eqMidSlider.getBottom(), smallSliderW, labelHeight);
 
-    eqHighSlider.setBounds(280, bottomRowY, smallKnobSize, smallKnobSize);
-    highLabel.setBounds(eqHighSlider.getX(), eqHighSlider.getBottom(), smallKnobSize, labelHeight);
+    eqHighSlider.setBounds(280, bottomRowY, smallSliderW, smallSliderH);
+    highLabel.setBounds(eqHighSlider.getX(), eqHighSlider.getBottom(), smallSliderW, labelHeight);
 
     // Κέντρο: VU Meter
-    vuMeter.setBounds(375, 335, 50, 95);
+    vuMeter.setBounds(375, 330, 50, 100);
 
     // Δεξιά Πλευρά: 3 Knobs (Stereo Width + Output)
-    monoFreqSlider.setBounds(470, bottomRowY, smallKnobSize, smallKnobSize);
-    monoLabel.setBounds(monoFreqSlider.getX(), monoFreqSlider.getBottom(), smallKnobSize, labelHeight);
+    monoFreqSlider.setBounds(470, bottomRowY, smallSliderW, smallSliderH);
+    monoLabel.setBounds(monoFreqSlider.getX(), monoFreqSlider.getBottom(), smallSliderW, labelHeight);
 
-    haasSlider.setBounds(570, bottomRowY, smallKnobSize, smallKnobSize);
-    haasLabel.setBounds(haasSlider.getX(), haasSlider.getBottom(), smallKnobSize, labelHeight);
+    haasSlider.setBounds(570, bottomRowY, smallSliderW, smallSliderH);
+    haasLabel.setBounds(haasSlider.getX(), haasSlider.getBottom(), smallSliderW, labelHeight);
 
-    outputGainSlider.setBounds(670, bottomRowY, smallKnobSize, smallKnobSize);
-    outLabel.setBounds(outputGainSlider.getX(), outputGainSlider.getBottom(), smallKnobSize, labelHeight);
+    outputGainSlider.setBounds(670, bottomRowY, smallSliderW, smallSliderH);
+    outLabel.setBounds(outputGainSlider.getX(), outputGainSlider.getBottom(), smallSliderW, labelHeight);
 }
