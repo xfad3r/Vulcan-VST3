@@ -37,7 +37,7 @@ public:
         if (slider.getName() == "Character" || slider.getName() == "Drive")
             g.setColour (juce::Colour(0xff00e699)); 
         else if (slider.getName() == "Width")
-            g.setColour (juce::Colour(0xff00bfff)); // Light blue for the new WIDTH knob
+            g.setColour (juce::Colour(0xff00bfff)); 
         else
             g.setColour (juce::Colour(0xffff9900));
 
@@ -129,7 +129,8 @@ private:
     juce::Label inLabel, lowLabel, midLabel, highLabel;
     juce::Label monoLabel, haasLabel, amountLabel, driveLabel, outLabel;
 
-    void setupSlider (juce::Slider&, juce::Label&, const juce::String&, const juce::String&);
+    // Προσθήκη του suffix parameter για τις μονάδες μέτρησης (dB, Hz)
+    void setupSlider (juce::Slider&, juce::Label&, const juce::String&, const juce::String&, const juce::String& suffix = "");
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (VulcanEditor)
 };
