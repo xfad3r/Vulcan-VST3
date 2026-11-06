@@ -7,7 +7,9 @@ VulcanProcessor::VulcanProcessor()
                       .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
       apvts (*this, nullptr, "Parameters", createParameterLayout())
 {
-    // The 6th float is now haasWidth (0.46 defaults to 11/19 samples)
+    // --- FIX: Αρχικοποίηση του ValueTree. Χωρίς αυτό, το DAW δεν μπορεί να σώσει τις ρυθμίσεις! ---
+    apvts.state = juce::ValueTree("VulcanState");
+
     presets = {
         { "01. Default / Clean",      0.0f,  0.0f,  0.0f,  0.0f, 250.0f, 0.46f, 0.0f, 0.0f,  0.0f },
         { "02. Glue & Punch",         0.0f,  0.5f,  0.0f,  0.5f, 250.0f, 0.46f, 0.3f, 1.5f, -0.5f },
@@ -36,10 +38,7 @@ juce::AudioProcessorValueTreeState::ParameterLayout VulcanProcessor::createParam
     params.push_back(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID("eq_mid", 1), "Pre EQ Mid (2.5kHz)", -12.0f, 12.0f, 0.0f));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID("eq_high", 1), "Pre EQ High (10kHz)", -12.0f, 12.0f, 0.0f));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID("mono_freq", 1), "Mono Lock Freq", 80.0f, 800.0f, 250.0f));
-    
-    // Nέο Knob για το Haas Width Modifier (0% έως 100%)
     params.push_back(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID("haas_amount", 1), "Stereo Width", 0.0f, 1.0f, 0.46f));
-    
     params.push_back(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID("amount", 1), "Character Amount", 0.0f, 2.0f, 0.0f));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID("limiter_drive", 1), "Limiter Drive", 0.0f, 18.0f, 0.0f));
     params.push_back(std::make_unique<juce::AudioParameterFloat>(juce::ParameterID("output_gain", 1), "Output Gain", -24.0f, 24.0f, 0.0f));
@@ -376,17 +375,31 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
 
 void VulcanProcessor::getStateInformation (juce::MemoryBlock& destData)
 {
+    // FIX: Αποθηκεύουμε τα parameters KAI την επιλογή του Preset
     auto state = apvts.copyState();
+    state.setProperty("currentPreset", currentPreset, nullptr);
+
     std::unique_ptr<juce::XmlElement> xml (state.createXml());
-    copyXmlToBinary (*xml, destData);
+    if (xml != nullptr)
+        copyXmlToBinary (*xml, destData);
 }
 
 void VulcanProcessor::setStateInformation (const void* data, int sizeInBytes)
 {
     std::unique_ptr<juce::XmlElement> xmlState (getXmlFromBinary (data, sizeInBytes));
     if (xmlState != nullptr)
+    {
         if (xmlState->hasTagName (apvts.state.getType()))
-            apvts.replaceState (juce::ValueTree::fromXml (*xmlState));
+        {
+            auto loadedState = juce::ValueTree::fromXml (*xmlState);
+            apvts.replaceState (loadedState);
+            
+            // FIX: Ανακτούμε το σωστό Preset ID
+            if (loadedState.hasProperty("currentPreset")) {
+                currentPreset = loadedState.getProperty("currentPreset");
+            }
+        }
+    }
 }
 
 juce::AudioProcessorEditor* VulcanProcessor::createEditor()
