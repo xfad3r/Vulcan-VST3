@@ -7,9 +7,7 @@ VulcanProcessor::VulcanProcessor()
                       .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
       apvts (*this, nullptr, "Parameters", createParameterLayout())
 {
-    // --- FIX: Αρχικοποίηση του ValueTree. Χωρίς αυτό, το DAW δεν μπορεί να σώσει τις ρυθμίσεις! ---
-    apvts.state = juce::ValueTree("VulcanState");
-
+    // The 6th float is now haasWidth (0.46 defaults to 11/19 samples at 44.1kHz)
     presets = {
         { "01. Default / Clean",      0.0f,  0.0f,  0.0f,  0.0f, 250.0f, 0.46f, 0.0f, 0.0f,  0.0f },
         { "02. Glue & Punch",         0.0f,  0.5f,  0.0f,  0.5f, 250.0f, 0.46f, 0.3f, 1.5f, -0.5f },
@@ -214,9 +212,14 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
     float thresholdDb = (amount <= 0.001f) ? 0.0f : (-6.0f - (amount * 10.0f));
     float ratio = 1.0f + (amount * 1.75f);
     
+    // --- SAMPLE RATE INDEPENDENT HAAS WIDTH ---
+    // Calculate the ratio compared to the baseline 44.1kHz
+    float rateMultiplier = static_cast<float>(currentSampleRate) / 44100.0f;
     float haasMultiplier = apvts.getRawParameterValue("haas_amount")->load();
-    int delaySamplesMid = static_cast<int>(std::round(23.0f * haasMultiplier));
-    int delaySamplesHigh = static_cast<int>(std::round(41.0f * haasMultiplier));
+    
+    // Base targets: 23 samples and 41 samples at 100% width at 44.1kHz.
+    int delaySamplesMid = static_cast<int>(std::round(23.0f * rateMultiplier * haasMultiplier));
+    int delaySamplesHigh = static_cast<int>(std::round(41.0f * rateMultiplier * haasMultiplier));
 
     for (int i = 0; i < 3; ++i)
     {
@@ -375,7 +378,6 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
 
 void VulcanProcessor::getStateInformation (juce::MemoryBlock& destData)
 {
-    // FIX: Αποθηκεύουμε τα parameters KAI την επιλογή του Preset
     auto state = apvts.copyState();
     state.setProperty("currentPreset", currentPreset, nullptr);
 
@@ -394,7 +396,6 @@ void VulcanProcessor::setStateInformation (const void* data, int sizeInBytes)
             auto loadedState = juce::ValueTree::fromXml (*xmlState);
             apvts.replaceState (loadedState);
             
-            // FIX: Ανακτούμε το σωστό Preset ID
             if (loadedState.hasProperty("currentPreset")) {
                 currentPreset = loadedState.getProperty("currentPreset");
             }
