@@ -2,7 +2,6 @@
 #include <JuceHeader.h>
 #include "PluginProcessor.h"
 
-// --- CUSTOM LOOK AND FEEL ---
 class VulcanLookAndFeel : public juce::LookAndFeel_V4
 {
 public:
@@ -26,26 +25,24 @@ public:
         auto rw = radius * 2.0f;
         auto angle = rotaryStartAngle + sliderPos * (rotaryEndAngle - rotaryStartAngle);
 
-        // Solid shade inside the knob so it pops from the background
         g.setColour (juce::Colour(0xff22252a)); 
         g.fillEllipse (rx, ry, rw, rw);
 
-        // Knob border
         g.setColour (juce::Colour(0xff0d0e11));
         g.drawEllipse (rx, ry, rw, rw, 2.0f);
 
-        // Colored Value Arc
         juce::Path filledArc;
         filledArc.addCentredArc (centreX, centreY, radius, radius, 0.0f, rotaryStartAngle, angle, true);
         
         if (slider.getName() == "Character" || slider.getName() == "Drive")
-            g.setColour (juce::Colour(0xff00e699)); // Cyan/Green
+            g.setColour (juce::Colour(0xff00e699)); 
+        else if (slider.getName() == "Width")
+            g.setColour (juce::Colour(0xff00bfff)); // Light blue for the new WIDTH knob
         else
-            g.setColour (juce::Colour(0xffff9900)); // Orange
+            g.setColour (juce::Colour(0xffff9900));
 
         g.strokePath (filledArc, juce::PathStrokeType (4.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
 
-        // Pointer Tick
         juce::Path pointer;
         auto pointerLength = radius * 0.33f;
         auto pointerThickness = 3.0f;
@@ -56,7 +53,6 @@ public:
     }
 };
 
-// --- VU METER COMPONENT ---
 class VuMeter : public juce::Component, public juce::Timer
 {
 public:
@@ -66,10 +62,10 @@ public:
     void paint(juce::Graphics& g) override
     {
         auto bounds = getLocalBounds().toFloat();
-        g.setColour(juce::Colour(0xff0d0e11)); // Meter background
+        g.setColour(juce::Colour(0xff0d0e11));
         g.fillRoundedRectangle(bounds, 4.0f);
 
-        float w = bounds.getWidth() / 2.0f - 2.0f; // Width per channel
+        float w = bounds.getWidth() / 2.0f - 2.0f; 
         
         auto drawBar = [&](float x, float level) {
             float db = juce::Decibels::gainToDecibels(level, -60.0f);
@@ -95,7 +91,6 @@ public:
         float newL = processor.peakL.load();
         float newR = processor.peakR.load();
         
-        // Smooth decay physics
         levelL = newL >= levelL ? newL : levelL * 0.85f;
         levelR = newR >= levelR ? newR : levelR * 0.85f;
         
@@ -107,7 +102,6 @@ private:
     float levelL = 0.0f, levelR = 0.0f;
 };
 
-// --- EDITOR CLASS ---
 class VulcanEditor : public juce::AudioProcessorEditor
 {
 public:
@@ -125,15 +119,15 @@ private:
     juce::ComboBox presetBox;
 
     juce::Slider inputGainSlider, eqLowSlider, eqMidSlider, eqHighSlider;
-    juce::Slider monoFreqSlider, amountSlider, limiterDriveSlider, outputGainSlider;
+    juce::Slider monoFreqSlider, haasSlider, amountSlider, limiterDriveSlider, outputGainSlider;
     
     using Attachment = juce::AudioProcessorValueTreeState::SliderAttachment;
     std::unique_ptr<Attachment> inAttach, lowAttach, midAttach, highAttach;
-    std::unique_ptr<Attachment> monoAttach, amountAttach, driveAttach, outAttach;
+    std::unique_ptr<Attachment> monoAttach, haasAttach, amountAttach, driveAttach, outAttach;
 
     juce::Label titleLabel, subTitleLabel;
     juce::Label inLabel, lowLabel, midLabel, highLabel;
-    juce::Label monoLabel, amountLabel, driveLabel, outLabel;
+    juce::Label monoLabel, haasLabel, amountLabel, driveLabel, outLabel;
 
     void setupSlider (juce::Slider&, juce::Label&, const juce::String&, const juce::String&);
 
