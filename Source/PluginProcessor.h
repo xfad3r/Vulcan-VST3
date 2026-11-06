@@ -6,7 +6,7 @@
 
 struct Preset {
     juce::String name;
-    float inGain, eqLow, eqMid, eqHigh, monoFreq, amount, limDrive, outGain;
+    float inGain, eqLow, eqMid, eqHigh, monoFreq, haasWidth, amount, limDrive, outGain;
 };
 
 class VulcanProcessor : public juce::AudioProcessor
