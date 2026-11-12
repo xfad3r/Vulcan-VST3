@@ -1,136 +1,105 @@
 #pragma once
+
 #include <JuceHeader.h>
 #include "PluginProcessor.h"
 
-class VulcanLookAndFeel : public juce::LookAndFeel_V4
+//==============================================================================
+// Custom Boutique Mastering Hardware LookAndFeel
+//==============================================================================
+class VulcanHardwareLookAndFeel : public juce::LookAndFeel_V4
 {
 public:
-    VulcanLookAndFeel()
-    {
-        setColour(juce::Slider::rotarySliderFillColourId, juce::Colour(0xff00d084));
-        setColour(juce::Slider::rotarySliderOutlineColourId, juce::Colour(0xff151515));
-        setColour(juce::Slider::thumbColourId, juce::Colours::white);
-        setColour(juce::ComboBox::backgroundColourId, juce::Colour(0xff1a1d21));
-        setColour(juce::ComboBox::outlineColourId, juce::Colour(0xff333333));
-    }
+    VulcanHardwareLookAndFeel();
+    ~VulcanHardwareLookAndFeel() override = default;
 
-    void drawRotarySlider (juce::Graphics& g, int x, int y, int width, int height, float sliderPos,
-                           const float rotaryStartAngle, const float rotaryEndAngle, juce::Slider& slider) override
-    {
-        auto radius = (float) juce::jmin (width / 2, height / 2) - 4.0f;
-        auto centreX = (float) x + (float) width  * 0.5f;
-        auto centreY = (float) y + (float) height * 0.5f;
-        auto rx = centreX - radius;
-        auto ry = centreY - radius;
-        auto rw = radius * 2.0f;
-        auto angle = rotaryStartAngle + sliderPos * (rotaryEndAngle - rotaryStartAngle);
+    void drawRotarySlider (juce::Graphics& g, int x, int y, int width, int height,
+                           float sliderPosProportional, float rotaryStartAngle,
+                           float rotaryEndAngle, juce::Slider& slider) override;
 
-        g.setColour (juce::Colour(0xff22252a)); 
-        g.fillEllipse (rx, ry, rw, rw);
+    void drawComboBox (juce::Graphics& g, int width, int height, bool isButtonDown,
+                       int buttonX, int buttonY, int buttonW, int buttonH,
+                       juce::ComboBox& box) override;
 
-        g.setColour (juce::Colour(0xff0d0e11));
-        g.drawEllipse (rx, ry, rw, rw, 2.0f);
+    void positionComboBoxText (juce::ComboBox& box, juce::Label& label) override;
 
-        juce::Path filledArc;
-        filledArc.addCentredArc (centreX, centreY, radius, radius, 0.0f, rotaryStartAngle, angle, true);
-        
-        if (slider.getName() == "Character" || slider.getName() == "Drive")
-            g.setColour (juce::Colour(0xff00e699)); 
-        else if (slider.getName() == "Width")
-            g.setColour (juce::Colour(0xff00bfff)); 
-        else
-            g.setColour (juce::Colour(0xffff9900));
-
-        g.strokePath (filledArc, juce::PathStrokeType (4.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
-
-        juce::Path pointer;
-        auto pointerLength = radius * 0.33f;
-        auto pointerThickness = 3.0f;
-        pointer.addRectangle (-pointerThickness * 0.5f, -radius, pointerThickness, pointerLength);
-        pointer.applyTransform (juce::AffineTransform::rotation (angle).translated (centreX, centreY));
-        g.setColour (juce::Colours::white);
-        g.fillPath (pointer);
-    }
+    juce::Font getComboBoxFont (juce::ComboBox& box) override;
+    juce::Font getPopupMenuFont() override;
 };
 
-class VuMeter : public juce::Component, public juce::Timer
+//==============================================================================
+// Vulcan Editor (2U Mastering Rack Interface)
+//==============================================================================
+class VulcanEditor : public juce::AudioProcessorEditor,
+                     private juce::Timer
 {
 public:
-    VuMeter(VulcanProcessor& p) : processor(p) { startTimerHz(60); }
-    ~VuMeter() override { stopTimer(); }
-
-    void paint(juce::Graphics& g) override
-    {
-        auto bounds = getLocalBounds().toFloat();
-        g.setColour(juce::Colour(0xff0d0e11));
-        g.fillRoundedRectangle(bounds, 4.0f);
-
-        float w = bounds.getWidth() / 2.0f - 2.0f; 
-        
-        auto drawBar = [&](float x, float level) {
-            float db = juce::Decibels::gainToDecibels(level, -60.0f);
-            float normalized = juce::jmap(db, -60.0f, 6.0f, 0.0f, 1.0f);
-            normalized = juce::jlimit(0.0f, 1.0f, normalized);
-            
-            float h = bounds.getHeight() * normalized;
-            float yPos = bounds.getHeight() - h;
-            
-            juce::Rectangle<float> bar(x, yPos, w, h);
-            juce::ColourGradient grad(juce::Colours::red, 0, 0, juce::Colour(0xff00e699), 0, bounds.getHeight(), false);
-            grad.addColour(0.3, juce::Colours::yellow);
-            g.setGradientFill(grad);
-            g.fillRoundedRectangle(bar, 2.0f);
-        };
-
-        drawBar(1.0f, levelL);
-        drawBar(bounds.getWidth() / 2.0f + 1.0f, levelR);
-    }
-
-    void timerCallback() override
-    {
-        float newL = processor.peakL.load();
-        float newR = processor.peakR.load();
-        
-        levelL = newL >= levelL ? newL : levelL * 0.85f;
-        levelR = newR >= levelR ? newR : levelR * 0.85f;
-        
-        repaint();
-    }
-
-private:
-    VulcanProcessor& processor;
-    float levelL = 0.0f, levelR = 0.0f;
-};
-
-class VulcanEditor : public juce::AudioProcessorEditor
-{
-public:
-    VulcanEditor (VulcanProcessor&);
+    explicit VulcanEditor (VulcanProcessor&);
     ~VulcanEditor() override;
 
     void paint (juce::Graphics&) override;
     void resized() override;
 
 private:
+    void timerCallback() override;
+
+    struct KnobControl
+    {
+        juce::Slider slider;
+        juce::String title;
+        juce::String unit;
+        juce::Colour accentColour;
+        bool isBipolar = false;
+        juce::Rectangle<int> bounds;
+        juce::Rectangle<int> readoutBounds;
+    };
+
+    void setupKnob (KnobControl& kc, const juce::String& paramID,
+                    const juce::String& titleText, const juce::String& unitText,
+                    juce::Colour accent, bool bipolar);
+
+    void drawRackChassis (juce::Graphics& g, juce::Rectangle<int> area);
+    void drawScrew (juce::Graphics& g, float cx, float cy, float radius);
+    void drawModulePanel (juce::Graphics& g, juce::Rectangle<int> rect, const juce::String& headerTitle, const juce::String& subCode);
+    void drawKnobReadout (juce::Graphics& g, const KnobControl& kc, const juce::String& formattedText);
+    void drawStereoMeterBridge (juce::Graphics& g, juce::Rectangle<int> rect);
+
+    juce::String formatKnobValue (const KnobControl& kc, const juce::String& id) const;
+
     VulcanProcessor& audioProcessor;
-    VulcanLookAndFeel customLookAndFeel;
-    VuMeter vuMeter;
+    VulcanHardwareLookAndFeel hardwareLnf;
 
-    juce::ComboBox presetBox;
+    // 9 Mastering Controls
+    KnobControl inGainKnob;
+    KnobControl eqLowKnob;
+    KnobControl eqMidKnob;
+    KnobControl eqHighKnob;
 
-    juce::Slider inputGainSlider, eqLowSlider, eqMidSlider, eqHighSlider;
-    juce::Slider monoFreqSlider, haasSlider, amountSlider, limiterDriveSlider, outputGainSlider;
-    
-    using Attachment = juce::AudioProcessorValueTreeState::SliderAttachment;
-    std::unique_ptr<Attachment> inAttach, lowAttach, midAttach, highAttach;
-    std::unique_ptr<Attachment> monoAttach, haasAttach, amountAttach, driveAttach, outAttach;
+    KnobControl monoFreqKnob;
+    KnobControl stereoWidthKnob;
+    KnobControl characterKnob;
 
-    juce::Label titleLabel, subTitleLabel;
-    juce::Label inLabel, lowLabel, midLabel, highLabel;
-    juce::Label monoLabel, haasLabel, amountLabel, driveLabel, outLabel;
+    KnobControl limiterDriveKnob;
+    KnobControl outGainKnob;
 
-    // Προσθήκη του suffix parameter για τις μονάδες μέτρησης (dB, Hz)
-    void setupSlider (juce::Slider&, juce::Label&, const juce::String&, const juce::String&, const juce::String& suffix = "");
+    std::vector< std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> > attachments;
+
+    juce::ComboBox presetSelector;
+
+    // Ballistic Metering State
+    float smoothPeakL = 0.0f;
+    float smoothPeakR = 0.0f;
+    float peakHoldL   = 0.0f;
+    float peakHoldR   = 0.0f;
+    int   holdTimerL  = 0;
+    int   holdTimerR  = 0;
+
+    // Cached layout areas
+    juce::Rectangle<int> headerRect;
+    juce::Rectangle<int> telemetryRect;
+    juce::Rectangle<int> modPreRect;
+    juce::Rectangle<int> modSpatialRect;
+    juce::Rectangle<int> modFinalRect;
+    juce::Rectangle<int> modMeterRect;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (VulcanEditor)
 };
