@@ -7,7 +7,8 @@ VulcanProcessor::VulcanProcessor()
                       .withOutput ("Output", juce::AudioChannelSet::stereo(), true)),
       apvts (*this, nullptr, "Parameters", createParameterLayout())
 {
-    // The 6th float is now haasWidth (0.46 defaults to 11/19 samples at 44.1kHz)
+    apvts.state = juce::ValueTree("VulcanState");
+
     presets = {
         { "01. Default / Clean",      0.0f,  0.0f,  0.0f,  0.0f, 250.0f, 0.46f, 0.0f, 0.0f,  0.0f },
         { "02. Glue & Punch",         0.0f,  0.5f,  0.0f,  0.5f, 250.0f, 0.46f, 0.3f, 1.5f, -0.5f },
@@ -48,7 +49,7 @@ int VulcanProcessor::getCurrentProgram() { return currentPreset; }
 
 void VulcanProcessor::setCurrentProgram (int index)
 {
-    if (index < 0 || index >= presets.size()) return;
+    if (index < 0 || index >= static_cast<int>(presets.size())) return;
     currentPreset = index;
     auto& p = presets[index];
     
@@ -71,13 +72,13 @@ void VulcanProcessor::setCurrentProgram (int index)
 
 const juce::String VulcanProcessor::getProgramName (int index)
 {
-    if (index >= 0 && index < presets.size()) return presets[index].name;
+    if (index >= 0 && index < static_cast<int>(presets.size())) return presets[index].name;
     return {};
 }
 
 void VulcanProcessor::changeProgramName (int index, const juce::String& newName)
 {
-    if (index >= 0 && index < presets.size()) presets[index].name = newName;
+    if (index >= 0 && index < static_cast<int>(presets.size())) presets[index].name = newName;
 }
 
 bool VulcanProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
@@ -212,12 +213,9 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
     float thresholdDb = (amount <= 0.001f) ? 0.0f : (-6.0f - (amount * 10.0f));
     float ratio = 1.0f + (amount * 1.75f);
     
-    // --- SAMPLE RATE INDEPENDENT HAAS WIDTH ---
-    // Calculate the ratio compared to the baseline 44.1kHz
     float rateMultiplier = static_cast<float>(currentSampleRate) / 44100.0f;
     float haasMultiplier = apvts.getRawParameterValue("haas_amount")->load();
     
-    // Base targets: 23 samples and 41 samples at 100% width at 44.1kHz.
     int delaySamplesMid = static_cast<int>(std::round(23.0f * rateMultiplier * haasMultiplier));
     int delaySamplesHigh = static_cast<int>(std::round(41.0f * rateMultiplier * haasMultiplier));
 
@@ -277,11 +275,10 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
             for (size_t s = 0; s < bandBlock.getNumSamples(); ++s) {
                 float inR = right[s];
                 if (delaySamplesMid > 0) {
-                    int readPos = midDelayWriteIdxR - delaySamplesMid;
-                    if (readPos < 0) readPos += 8192;
+                    int readPos = (midDelayWriteIdxR - delaySamplesMid) & 8191;
                     right[s] = midDelayBufferR[readPos];
                     midDelayBufferR[midDelayWriteIdxR] = inR;
-                    midDelayWriteIdxR = (midDelayWriteIdxR + 1) % 8192;
+                    midDelayWriteIdxR = (midDelayWriteIdxR + 1) & 8191;
                 }
             }
         }
@@ -292,11 +289,10 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
             for (size_t s = 0; s < bandBlock.getNumSamples(); ++s) {
                 float inL = left[s];
                 if (delaySamplesHigh > 0) {
-                    int readPos = highDelayWriteIdxL - delaySamplesHigh;
-                    if (readPos < 0) readPos += 8192;
+                    int readPos = (highDelayWriteIdxL - delaySamplesHigh) & 8191;
                     left[s] = highDelayBufferL[readPos];
                     highDelayBufferL[highDelayWriteIdxL] = inL;
-                    highDelayWriteIdxL = (highDelayWriteIdxL + 1) % 8192;
+                    highDelayWriteIdxL = (highDelayWriteIdxL + 1) & 8191;
                 }
                 
                 float mid = 0.5f * (left[s] + right[s]);
@@ -316,17 +312,16 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
         auto oversampledBlock = oversamplers[i]->processSamplesUp(bandBlock);
         
         const float driveFactor = 1.0f + (amount * 1.5f);
-        const float baseDrive = juce::jmax(0.1f, driveFactor);
-        
-        const float drive = baseDrive;
-        const float norm = std::tanh(drive) + 0.032f * (std::tanh(drive) * std::tanh(drive));
+        const float drive = juce::jmax(0.1f, driveFactor);
+        const float tanhDrive = juce::dsp::FastMathApproximations::tanh(drive);
+        const float norm = tanhDrive + 0.032f * (tanhDrive * tanhDrive);
 
         for (size_t ch = 0; ch < oversampledBlock.getNumChannels(); ++ch)
         {
             float* ptr = oversampledBlock.getChannelPointer(ch);
             for (size_t s = 0; s < oversampledBlock.getNumSamples(); ++s)
             {
-                float sat = std::tanh(ptr[s] * drive);
+                float sat = juce::dsp::FastMathApproximations::tanh(ptr[s] * drive);
                 float asymmetric = sat + 0.032f * (sat * sat) * (sat >= 0.0f ? 1.0f : -1.0f);
                 ptr[s] = asymmetric / norm;
             }
