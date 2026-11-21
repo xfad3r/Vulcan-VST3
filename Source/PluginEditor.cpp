@@ -434,7 +434,7 @@ VulcanEditor::VulcanEditor (VulcanProcessor& p)
 
     // Preset Selector
     addAndMakeVisible (presetSelector);
-    presetSelector.setTooltip ("PRESET BANK\nSelect a factory mastering curve. An asterisk (*) indicates manual edits—re-select the same preset anytime to restore its original settings.");
+    presetSelector.setTooltip ("PRESET BANK\nSelect a factory mastering curve. An asterisk (*) indicates manual edits - re-select the same preset anytime to restore its original settings.");
     for (int i = 0; i < audioProcessor.getNumPrograms(); ++i)
         presetSelector.addItem (audioProcessor.getProgramName (i), i + 1);
 
@@ -557,8 +557,8 @@ void VulcanEditor::setupKnob (KnobControl& kc, const juce::String& paramID,
     // Propagate quick-manual tooltip to the child numeric readout label as well
     for (int i = 0; i < kc.slider.getNumChildComponents(); ++i)
     {
-        if (auto* child = kc.slider.getChildComponent (i))
-            child->setTooltip (manualTooltip);
+        if (auto* tipClient = dynamic_cast<juce::SettableTooltipClient*> (kc.slider.getChildComponent (i)))
+            tipClient->setTooltip (manualTooltip);
     }
 
     attachments.push_back (std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
