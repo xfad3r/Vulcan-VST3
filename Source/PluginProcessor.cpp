@@ -52,7 +52,7 @@ void VulcanProcessor::setCurrentProgram (int index)
     if (index < 0 || index >= static_cast<int>(presets.size())) return;
     currentPreset = index;
     auto& p = presets[index];
-    
+
     auto setParam = [&](const juce::String& id, float val) {
         auto* param = apvts.getParameter(id);
         if (param != nullptr)
@@ -93,23 +93,25 @@ bool VulcanProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
 void VulcanProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
 {
     currentSampleRate = sampleRate;
-    currentMonoFreq = -1.0f; 
+    currentMonoFreq = -1.0f;
     juce::dsp::ProcessSpec spec;
     spec.sampleRate = sampleRate;
     spec.maximumBlockSize = static_cast<juce::uint32> (samplesPerBlock);
     spec.numChannels = static_cast<juce::uint32> (getMainBusNumInputChannels());
 
-    updatePreEq(); 
-    
+    updatePreEq();
+
     std::fill(midDelayBufferR.begin(), midDelayBufferR.end(), 0.0f);
     midDelayWriteIdxR = 0;
 
     std::fill(highDelayBufferL.begin(), highDelayBufferL.end(), 0.0f);
     highDelayWriteIdxL = 0;
-    
+
     noiseHpfState = 0.0f;
     rng.setSeedRandomly();
-    
+
+    inPeakL.store(0.0f);
+    inPeakR.store(0.0f);
     peakL.store(0.0f);
     peakR.store(0.0f);
 
@@ -144,7 +146,7 @@ void VulcanProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
         bandCompressors[i].setAttack(20.0f);
         bandCompressors[i].setRelease(120.0f);
         bandBuffers[i].setSize(getMainBusNumInputChannels(), samplesPerBlock);
-        
+
         oversamplers[i]->initProcessing(samplesPerBlock);
         oversamplers[i]->reset();
     }
@@ -152,9 +154,9 @@ void VulcanProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
     limiter.prepare(spec);
     limiter.setThreshold(-0.1f);
     limiter.setRatio(20.0f);
-    limiter.setAttack(1.0f); 
+    limiter.setAttack(1.0f);
     limiter.setRelease(50.0f);
-    
+
     outputGainModule.prepare(spec);
 }
 
@@ -178,7 +180,7 @@ void VulcanProcessor::updatePreEq()
 void VulcanProcessor::updateCrossover()
 {
     if (currentSampleRate <= 0.0) return;
-    
+
     float targetFreq = juce::jlimit(80.0f, 800.0f, apvts.getRawParameterValue("mono_freq")->load());
     if (std::abs(targetFreq - currentMonoFreq) > 0.5f) {
         currentMonoFreq = targetFreq;
@@ -205,6 +207,28 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
     juce::dsp::ProcessContextReplacing<float> context(block);
 
     inputGainModule.process(context);
+
+    // Measure post-Input-Trim stereo peaks for the Input VU Meter
+    float inMaxL = 0.0f;
+    float inMaxR = 0.0f;
+    for (int ch = 0; ch < numChannels; ++ch)
+    {
+        const float* inData = buffer.getReadPointer(ch);
+        for (int s = 0; s < numSamples; ++s)
+        {
+            const float absSample = std::abs(inData[s]);
+            if (ch == 0) inMaxL = juce::jmax(inMaxL, absSample);
+            if (ch == 1) inMaxR = juce::jmax(inMaxR, absSample);
+        }
+    }
+    if (numChannels >= 2) {
+        inPeakL.store(inMaxL);
+        inPeakR.store(inMaxR);
+    } else if (numChannels == 1) {
+        inPeakL.store(inMaxL);
+        inPeakR.store(inMaxL);
+    }
+
     updatePreEq();
     updateCrossover();
     preEqChain.process(context);
@@ -212,10 +236,10 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
     float amount = apvts.getRawParameterValue("amount")->load();
     float thresholdDb = (amount <= 0.001f) ? 0.0f : (-6.0f - (amount * 10.0f));
     float ratio = 1.0f + (amount * 1.75f);
-    
+
     float rateMultiplier = static_cast<float>(currentSampleRate) / 44100.0f;
     float haasMultiplier = apvts.getRawParameterValue("haas_amount")->load();
-    
+
     int delaySamplesMid = static_cast<int>(std::round(23.0f * rateMultiplier * haasMultiplier));
     int delaySamplesHigh = static_cast<int>(std::round(41.0f * rateMultiplier * haasMultiplier));
 
@@ -254,12 +278,12 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
     hpMidHigh.process(highContext);
 
     buffer.clear();
-    
+
     for (int i = 0; i < 3; ++i)
     {
         juce::dsp::AudioBlock<float> bandBlock(bandBuffers[i]);
         juce::dsp::ProcessContextReplacing<float> bandContext(bandBlock);
-        
+
         if (i == 0 && bandBlock.getNumChannels() > 1) {
             float* left = bandBlock.getChannelPointer(0);
             float* right = bandBlock.getChannelPointer(1);
@@ -294,12 +318,12 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
                     highDelayBufferL[highDelayWriteIdxL] = inL;
                     highDelayWriteIdxL = (highDelayWriteIdxL + 1) & 8191;
                 }
-                
+
                 float mid = 0.5f * (left[s] + right[s]);
                 float side = 0.5f * (left[s] - right[s]);
                 float raw_noise = ((rng.nextFloat() * 2.0f) - 1.0f);
                 noiseHpfState = 0.85f * noiseHpfState + 0.15f * raw_noise;
-                float vhf_noise = (raw_noise - noiseHpfState) * 0.00005f; 
+                float vhf_noise = (raw_noise - noiseHpfState) * 0.00005f;
                 side += vhf_noise;
 
                 left[s] = mid + side;
@@ -308,9 +332,9 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
         }
 
         bandCompressors[i].process(bandContext);
-        
+
         auto oversampledBlock = oversamplers[i]->processSamplesUp(bandBlock);
-        
+
         const float driveFactor = 1.0f + (amount * 1.5f);
         const float drive = juce::jmax(0.1f, driveFactor);
         const float tanhDrive = juce::dsp::FastMathApproximations::tanh(drive);
@@ -326,7 +350,7 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
                 ptr[s] = asymmetric / norm;
             }
         }
-        
+
         oversamplers[i]->processSamplesDown(bandBlock);
 
         for (int ch = 0; ch < numChannels; ++ch)
@@ -350,18 +374,18 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
         {
             float r1 = rng.nextFloat();
             float r2 = rng.nextFloat();
-            float dither = (r1 - r2) * (1.0f / 32767.0f); 
-            
+            float dither = (r1 - r2) * (1.0f / 32767.0f);
+
             float sample = juce::jlimit(-1.0f, 1.0f, channelData[s] + dither);
             int pcm16 = static_cast<int>(sample * 32767.0f);
             float finalSample = static_cast<float>(pcm16) / 32767.0f;
             channelData[s] = finalSample;
-            
+
             if (ch == 0) maxL = juce::jmax(maxL, std::abs(finalSample));
             if (ch == 1) maxR = juce::jmax(maxR, std::abs(finalSample));
         }
     }
-    
+
     if (numChannels >= 2) {
         peakL.store(maxL);
         peakR.store(maxR);
@@ -390,7 +414,7 @@ void VulcanProcessor::setStateInformation (const void* data, int sizeInBytes)
         {
             auto loadedState = juce::ValueTree::fromXml (*xmlState);
             apvts.replaceState (loadedState);
-            
+
             if (loadedState.hasProperty("currentPreset")) {
                 currentPreset = loadedState.getProperty("currentPreset");
             }
