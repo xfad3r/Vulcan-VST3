@@ -35,6 +35,33 @@ namespace
         return juce::Font (height, bold ? juce::Font::bold : juce::Font::plain);
        #endif
     }
+
+    juce::TextLayout buildTooltipLayout (const juce::String& text, float maxTextWidth)
+    {
+        juce::AttributedString attr;
+        attr.setJustification (juce::Justification::topLeft);
+        attr.setWordWrap (juce::AttributedString::WordWrap::byWord);
+
+        const int newlineIdx = text.indexOfChar ('\n');
+        if (newlineIdx >= 0)
+        {
+            const juce::String header = text.substring (0, newlineIdx);
+            const juce::String body   = text.substring (newlineIdx + 1);
+
+            attr.append (header + "\n", makeAutoFont (11.5f, true, true), kElectricCyan);
+            attr.append (body, makeAutoFont (11.0f, false, false), kChromeBright);
+            attr.setLineSpacing (2.2f);
+        }
+        else
+        {
+            attr.append (text, makeAutoFont (11.0f, false, false), kChromeBright);
+            attr.setLineSpacing (2.0f);
+        }
+
+        juce::TextLayout layout;
+        layout.createLayout (attr, maxTextWidth);
+        return layout;
+    }
 }
 
 //==============================================================================
@@ -309,6 +336,56 @@ juce::Font VulcanAutomotiveLookAndFeel::getPopupMenuFont()
     return makeAutoFont (12.0f, true, false);
 }
 
+juce::Rectangle<int> VulcanAutomotiveLookAndFeel::getTooltipBounds (const juce::String& tipText,
+                                                                    juce::Point<int> screenPos,
+                                                                    juce::Rectangle<int> parentArea)
+{
+    const float maxTextW = 296.0f;
+    const auto layout = buildTooltipLayout (tipText, maxTextW);
+
+    const int boxW = static_cast<int> (std::ceil (layout.getWidth())) + 26;
+    const int boxH = static_cast<int> (std::ceil (layout.getHeight())) + 18;
+
+    int x = screenPos.x + 14;
+    int y = screenPos.y + 18;
+
+    if (x + boxW > parentArea.getRight() - 10)
+        x = screenPos.x - boxW - 10;
+
+    if (y + boxH > parentArea.getBottom() - 10)
+        y = screenPos.y - boxH - 12;
+
+    x = juce::jlimit (parentArea.getX() + 10, juce::jmax (parentArea.getX() + 10, parentArea.getRight() - boxW - 10), x);
+    y = juce::jlimit (parentArea.getY() + 10, juce::jmax (parentArea.getY() + 10, parentArea.getBottom() - boxH - 10), y);
+
+    return { x, y, boxW, boxH };
+}
+
+void VulcanAutomotiveLookAndFeel::drawTooltip (juce::Graphics& g, const juce::String& text, int width, int height)
+{
+    const auto bounds = juce::Rectangle<float> (0.0f, 0.0f, static_cast<float> (width), static_cast<float> (height));
+
+    // Smoked-Sapphire & Obsidian HUD Card
+    g.setColour (juce::Colour (0xf4050e1c));
+    g.fillRoundedRectangle (bounds, 6.0f);
+
+    // Subtle top specular sheen
+    g.setColour (juce::Colours::white.withAlpha (0.05f));
+    g.fillRoundedRectangle (bounds.getX() + 1.0f, bounds.getY() + 1.0f, bounds.getWidth() - 2.0f, bounds.getHeight() * 0.32f, 5.0f);
+
+    // Left Electric-Cyan Accent Stripe
+    g.setColour (kElectricCyan);
+    g.fillRoundedRectangle (bounds.getX() + 2.0f, bounds.getY() + 7.0f, 3.0f, bounds.getHeight() - 14.0f, 1.5f);
+
+    // Chrome & Cyan Frame Border
+    g.setColour (kElectricCyan.withAlpha (0.58f));
+    g.drawRoundedRectangle (bounds.reduced (0.5f), 6.0f, 1.1f);
+
+    const float maxTextW = juce::jmax (60.0f, static_cast<float> (width) - 26.0f);
+    const auto layout = buildTooltipLayout (text, maxTextW);
+    layout.draw (g, juce::Rectangle<float> (14.0f, 9.0f, maxTextW, static_cast<float> (height) - 18.0f));
+}
+
 //==============================================================================
 // VulcanEditor Implementation
 //==============================================================================
@@ -317,21 +394,47 @@ VulcanEditor::VulcanEditor (VulcanProcessor& p)
 {
     setLookAndFeel (&automotiveLnf);
 
-    // Top Bank: 5 Core Controls (with direct Keyboard numeric input on every readout)
-    setupKnob (inGainKnob,      "input_gain",  "INPUT",        "TRIM",     kWarmAmber,    ValueDisplayMode::Decibels,        true,  false, 0.0);
-    setupKnob (monoFreqKnob,    "mono_freq",   "MONO LOCK",    "X-OVER",   kChromeBright, ValueDisplayMode::FrequencyHz,     false, false, 250.0);
-    setupKnob (stereoWidthKnob, "haas_amount", "STEREO WIDTH", "HAAS L/R", kElectricCyan, ValueDisplayMode::Percent100From1, false, true,  0.46);
-    setupKnob (characterKnob,   "amount",      "HARMONICS",    "SATURATE", kWarmAmber,    ValueDisplayMode::Percent100From2, false, false, 0.0);
-    setupKnob (outGainKnob,     "output_gain", "OUTPUT",       "LEVEL",    kChromeBright, ValueDisplayMode::Decibels,        true,  false, 0.0);
+    // Top Bank: 5 Core Controls (with Keyboard Entry + Quick-Manual Tooltips)
+    setupKnob (inGainKnob, "input_gain", "INPUT", "TRIM",
+               "INPUT TRIM (-24 to +24 dB)\nAdjusts incoming gain before Pre-EQ and saturation. Aim for peaks around -6 dBFS on the Input Meter for optimal headroom.\n[Click readout to type | Double-click knob to reset]",
+               kWarmAmber, ValueDisplayMode::Decibels, true, false, 0.0);
+
+    setupKnob (monoFreqKnob, "mono_freq", "MONO LOCK", "X-OVER",
+               "MONO LOCK CROSSOVER (80 - 800 Hz)\nSums frequencies below this cutoff to pure mono while keeping upper bands wide. Tightens sub-bass & 808 punch with zero phase smear. Sweet spot: 150 - 250 Hz.",
+               kChromeBright, ValueDisplayMode::FrequencyHz, false, false, 250.0);
+
+    setupKnob (stereoWidthKnob, "haas_amount", "STEREO WIDTH", "HAAS L/R",
+               "STEREO WIDTH // HAAS PHASE MATRIX (0 - 100%)\nIntroduces sample-rate-compensated L/R micro-delays in Mid & High bands to expand width and break static phase symmetry. Default: 46% (11 / 19 smp at 44.1 kHz).",
+               kElectricCyan, ValueDisplayMode::Percent100From1, false, true, 0.46);
+
+    setupKnob (characterKnob, "amount", "HARMONICS", "SATURATE",
+               "HARMONICS // 4X OVERSAMPLED SATURATION (0 - 100%)\nEngages 3-band glue compression and asymmetric tanh tube/tape saturation with 4x polyphase oversampling. Adds analog density and harmonic warmth.",
+               kWarmAmber, ValueDisplayMode::Percent100From2, false, false, 0.0);
+
+    setupKnob (outGainKnob, "output_gain", "OUTPUT", "LEVEL",
+               "OUTPUT TRIM (-24 to +24 dB)\nFinal post-limiter gain stage prior to 16-bit TPDF dithering. Use to level-match processed vs. bypassed audio or set streaming headroom.",
+               kChromeBright, ValueDisplayMode::Decibels, true, false, 0.0);
 
     // Bottom Bank: 4 Pre-EQ & Limiter Controls
-    setupKnob (eqLowKnob,        "eq_low",        "LOW",         "100 Hz",  kElectricCyan, ValueDisplayMode::Decibels, true,  false, 0.0);
-    setupKnob (eqMidKnob,        "eq_mid",        "MID",         "2.5 kHz", kElectricCyan, ValueDisplayMode::Decibels, true,  false, 0.0);
-    setupKnob (eqHighKnob,       "eq_high",       "HIGH",        "10 kHz",  kElectricCyan, ValueDisplayMode::Decibels, true,  false, 0.0);
-    setupKnob (limiterDriveKnob, "limiter_drive", "CEILING DRV", "LIMITER", kWarmAmber,    ValueDisplayMode::Decibels, false, false, 0.0);
+    setupKnob (eqLowKnob, "eq_low", "LOW", "100 Hz",
+               "PRE-EQ LOW SHELF // 100 Hz (-12 to +12 dB)\nSmooth 100 Hz low-shelf filter feeding the crossover and saturation stage. Shapes sub weight and low-end punch before compression.",
+               kElectricCyan, ValueDisplayMode::Decibels, true, false, 0.0);
+
+    setupKnob (eqMidKnob, "eq_mid", "MID", "2.5 kHz",
+               "PRE-EQ MID BELL // 2.5 kHz (-12 to +12 dB)\nMusical presence bell (Q = 1.0) positioned pre-saturation. Enhances vocal articulation, synth bite, or tames upper-mid harshness.",
+               kElectricCyan, ValueDisplayMode::Decibels, true, false, 0.0);
+
+    setupKnob (eqHighKnob, "eq_high", "HIGH", "10 kHz",
+               "PRE-EQ HIGH SHELF // 10 kHz (-12 to +12 dB)\n10 kHz air shelf ahead of the harmonic engine. Boosts high-frequency sheen or softens brittle digital transients.",
+               kElectricCyan, ValueDisplayMode::Decibels, true, false, 0.0);
+
+    setupKnob (limiterDriveKnob, "limiter_drive", "CEILING DRV", "LIMITER",
+               "CEILING DRIVE // BRICKWALL LIMITER (0 to +18 dB)\nDrives the mix into a fast transparent brickwall limiter (-0.1 dBFS ceiling, 1 ms attack / 50 ms release) for commercial loudness.",
+               kWarmAmber, ValueDisplayMode::Decibels, false, false, 0.0);
 
     // Preset Selector
     addAndMakeVisible (presetSelector);
+    presetSelector.setTooltip ("PRESET BANK\nSelect a factory mastering curve. An asterisk (*) indicates manual edits—re-select the same preset anytime to restore its original settings.");
     for (int i = 0; i < audioProcessor.getNumPrograms(); ++i)
         presetSelector.addItem (audioProcessor.getProgramName (i), i + 1);
 
@@ -356,8 +459,31 @@ VulcanEditor::~VulcanEditor()
     setLookAndFeel (nullptr);
 }
 
+juce::String VulcanEditor::getTooltip()
+{
+    const auto mousePos = getMouseXYRelative();
+
+    if (inMeterRect.contains (mousePos))
+        return "INPUT PEAK METER (dBFS)\nDisplays post-Input-Trim stereo peak levels with 32-segment resolution, peak hold, and 0 dBFS clip indicators.";
+
+    if (outMeterRect.contains (mousePos))
+        return "OUTPUT MASTER METER (dBFS)\nDisplays final post-limiter, post-16-bit TPDF dithered stereo output levels and peak hold ceiling.";
+
+    if (telemetryRect.contains (mousePos))
+        return "LIVE HAAS TELEMETRY\nReal-time readout of active L/R sample offsets (Mid / High bands), millisecond delay, and DAW sample rate.";
+
+    for (const auto& screwPos : screwCenters)
+    {
+        if (mousePos.toFloat().getDistanceFrom (screwPos) <= 16.0f)
+            return "CNC CHASSIS FASTENER\nClick to spin the billet stainless screw.";
+    }
+
+    return {};
+}
+
 void VulcanEditor::setupKnob (KnobControl& kc, const juce::String& paramID,
                               const juce::String& titleText, const juce::String& subText,
+                              const juce::String& manualTooltip,
                               juce::Colour arcCol, ValueDisplayMode mode,
                               bool bipolar, bool hero, double defaultVal)
 {
@@ -372,6 +498,7 @@ void VulcanEditor::setupKnob (KnobControl& kc, const juce::String& paramID,
     kc.slider.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 78, 20);
     kc.slider.setWantsKeyboardFocus (true);
     kc.slider.setDoubleClickReturnValue (true, defaultVal);
+    kc.slider.setTooltip (manualTooltip);
     kc.slider.setColour (juce::Slider::rotarySliderFillColourId, arcCol);
     kc.slider.setColour (juce::Slider::textBoxTextColourId, hero ? kElectricCyan : kChromeBright);
     kc.slider.getProperties().set ("bipolar", bipolar);
@@ -426,6 +553,14 @@ void VulcanEditor::setupKnob (KnobControl& kc, const juce::String& paramID,
     };
 
     addAndMakeVisible (kc.slider);
+
+    // Propagate quick-manual tooltip to the child numeric readout label as well
+    for (int i = 0; i < kc.slider.getNumChildComponents(); ++i)
+    {
+        if (auto* child = kc.slider.getChildComponent (i))
+            child->setTooltip (manualTooltip);
+    }
+
     attachments.push_back (std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
         audioProcessor.apvts, paramID, kc.slider));
 }

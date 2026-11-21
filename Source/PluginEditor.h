@@ -31,12 +31,19 @@ public:
 
     juce::Font getComboBoxFont (juce::ComboBox& box) override;
     juce::Font getPopupMenuFont() override;
+
+    juce::Rectangle<int> getTooltipBounds (const juce::String& tipText,
+                                           juce::Point<int> screenPos,
+                                           juce::Rectangle<int> parentArea) override;
+
+    void drawTooltip (juce::Graphics& g, const juce::String& text, int width, int height) override;
 };
 
 //==============================================================================
 // Vulcan Editor (Automotive Metallic Sapphire Blue + 3D Billet Hardware Edition)
 //==============================================================================
 class VulcanEditor : public juce::AudioProcessorEditor,
+                     public juce::TooltipClient,
                      private juce::Timer
 {
 public:
@@ -46,6 +53,9 @@ public:
     void paint (juce::Graphics&) override;
     void resized() override;
     void mouseDown (const juce::MouseEvent& event) override;
+
+    // Provides quick-manual hover descriptions for meters, telemetry & hardware accents
+    juce::String getTooltip() override;
 
 private:
     void timerCallback() override;
@@ -97,6 +107,7 @@ private:
 
     void setupKnob (KnobControl& kc, const juce::String& paramID,
                     const juce::String& titleText, const juce::String& subText,
+                    const juce::String& manualTooltip,
                     juce::Colour arcCol, ValueDisplayMode mode,
                     bool bipolar, bool hero, double defaultVal);
 
@@ -111,10 +122,13 @@ private:
     VulcanProcessor& audioProcessor;
     VulcanAutomotiveLookAndFeel automotiveLnf;
 
+    // Embedded Quick-Manual HUD Tooltip Engine (350ms hover delay)
+    juce::TooltipWindow tooltipWindow { this, 350 };
+
     // Cached automotive metallic clearcoat texture
     juce::Image chassisCache;
 
-    // 9 Mastering Controls with full Keyboard Editing
+    // 9 Mastering Controls with full Keyboard Editing & Hover Manual
     KnobControl inGainKnob;
     KnobControl monoFreqKnob;
     KnobControl stereoWidthKnob;
