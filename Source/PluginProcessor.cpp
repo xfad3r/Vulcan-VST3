@@ -411,3 +411,53 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
             if (ch == 1) maxR = juce::jmax(maxR, std::abs(finalSample));
         }
     }
+
+    if (numChannels >= 2) {
+        peakL.store(maxL);
+        peakR.store(maxR);
+    } else if (numChannels == 1) {
+        peakL.store(maxL);
+        peakR.store(maxL);
+    }
+}
+
+void VulcanProcessor::getStateInformation (juce::MemoryBlock& destData)
+{
+    auto state = apvts.copyState();
+    state.setProperty("currentPreset", currentPreset, nullptr);
+    state.setProperty("presetModified", presetModified.load(), nullptr);
+
+    std::unique_ptr<juce::XmlElement> xml (state.createXml());
+    if (xml != nullptr)
+        copyXmlToBinary (*xml, destData);
+}
+
+void VulcanProcessor::setStateInformation (const void* data, int sizeInBytes)
+{
+    std::unique_ptr<juce::XmlElement> xmlState (getXmlFromBinary (data, sizeInBytes));
+    if (xmlState != nullptr)
+    {
+        if (xmlState->hasTagName (apvts.state.getType()))
+        {
+            auto loadedState = juce::ValueTree::fromXml (*xmlState);
+            isApplyingPreset = true;
+            apvts.replaceState (loadedState);
+            isApplyingPreset = false;
+
+            if (loadedState.hasProperty("currentPreset"))
+                currentPreset = loadedState.getProperty("currentPreset");
+
+            presetModified.store (loadedState.getProperty("presetModified", false));
+        }
+    }
+}
+
+juce::AudioProcessorEditor* VulcanProcessor::createEditor()
+{
+    return new VulcanEditor(*this);
+}
+
+juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
+{
+    return new VulcanProcessor();
+}
