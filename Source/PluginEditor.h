@@ -7,17 +7,21 @@
 #include <memory>
 
 //==============================================================================
-// Boutique Blue Stompbox / Faceplate LookAndFeel (Canvas-Inspired Aesthetic)
+// Automotive Metallic Blue & 3D CNC Machined LookAndFeel
 //==============================================================================
-class VulcanBoutiqueLookAndFeel : public juce::LookAndFeel_V4
+class VulcanAutomotiveLookAndFeel : public juce::LookAndFeel_V4
 {
 public:
-    VulcanBoutiqueLookAndFeel();
-    ~VulcanBoutiqueLookAndFeel() override = default;
+    VulcanAutomotiveLookAndFeel();
+    ~VulcanAutomotiveLookAndFeel() override = default;
 
     void drawRotarySlider (juce::Graphics& g, int x, int y, int width, int height,
                            float sliderPosProportional, float rotaryStartAngle,
                            float rotaryEndAngle, juce::Slider& slider) override;
+
+    juce::Label* createSliderTextBox (juce::Slider& slider) override;
+
+    void drawLabel (juce::Graphics& g, juce::Label& label) override;
 
     void drawComboBox (juce::Graphics& g, int width, int height, bool isButtonDown,
                        int buttonX, int buttonY, int buttonW, int buttonH,
@@ -30,7 +34,7 @@ public:
 };
 
 //==============================================================================
-// Vulcan Editor (Boutique Cobalt Blue Faceplate Edition)
+// Vulcan Editor (Automotive Metallic Sapphire Blue + 3D Billet Hardware Edition)
 //==============================================================================
 class VulcanEditor : public juce::AudioProcessorEditor,
                      private juce::Timer
@@ -45,42 +49,71 @@ public:
 
 private:
     void timerCallback() override;
-    void rebuildFaceplateTexture();
+    void rebuildMetallicChassisCache();
+
+    enum class ValueDisplayMode
+    {
+        Decibels,
+        FrequencyHz,
+        Percent100From1,
+        Percent100From2
+    };
 
     struct KnobControl
     {
         juce::Slider slider;
         juce::String title;
         juce::String subLabel;
-        juce::String unit;
         juce::Colour arcColour;
+        ValueDisplayMode displayMode = ValueDisplayMode::Decibels;
         bool isBipolar = false;
         bool isHero = false;
-        juce::Rectangle<int> bounds;
-        juce::Rectangle<int> readoutBounds;
+        juce::Rectangle<int> sliderBounds;
+        juce::Rectangle<int> dialBounds;
+    };
+
+    struct MeterBallistics
+    {
+        float smoothL = 0.0f;
+        float smoothR = 0.0f;
+        float holdL   = 0.0f;
+        float holdR   = 0.0f;
+        int   timerL  = 0;
+        int   timerR  = 0;
+
+        void update (float rawL, float rawR)
+        {
+            smoothL = (rawL > smoothL) ? rawL : (smoothL * 0.85f);
+            smoothR = (rawR > smoothR) ? rawR : (smoothR * 0.85f);
+
+            if (rawL >= holdL) { holdL = rawL; timerL = 42; }
+            else if (--timerL <= 0) { holdL *= 0.94f; }
+
+            if (rawR >= holdR) { holdR = rawR; timerR = 42; }
+            else if (--timerR <= 0) { holdR *= 0.94f; }
+        }
     };
 
     void setupKnob (KnobControl& kc, const juce::String& paramID,
                     const juce::String& titleText, const juce::String& subText,
-                    const juce::String& unitText, juce::Colour arcCol,
-                    bool bipolar, bool hero);
+                    juce::Colour arcCol, ValueDisplayMode mode,
+                    bool bipolar, bool hero, double defaultVal);
 
     void drawFaceplate (juce::Graphics& g);
-    void drawBoutiqueScrew (juce::Graphics& g, juce::Point<float> center, float radius, float angleRad);
-    void drawJewelLight (juce::Graphics& g, juce::Point<float> center, float radius);
-    void drawVulcanEmblem (juce::Graphics& g, juce::Rectangle<float> area);
-    void drawKnobGraphics (juce::Graphics& g, const KnobControl& kc, const juce::String& formattedText);
-    void drawStereoMeter (juce::Graphics& g, juce::Rectangle<int> rect);
-
-    juce::String formatKnobValue (const KnobControl& kc, const juce::String& id) const;
+    void drawChromeScrew (juce::Graphics& g, juce::Point<float> center, float radius, float angleRad);
+    void drawSapphireJewel (juce::Graphics& g, juce::Point<float> center, float radius);
+    void drawMetallicEmblem (juce::Graphics& g, juce::Rectangle<float> area);
+    void drawKnobLabels (juce::Graphics& g, const KnobControl& kc);
+    void drawStereoMeterBridge (juce::Graphics& g, juce::Rectangle<int> rect,
+                                const juce::String& headerLabel, const MeterBallistics& m);
 
     VulcanProcessor& audioProcessor;
-    VulcanBoutiqueLookAndFeel boutiqueLnf;
+    VulcanAutomotiveLookAndFeel automotiveLnf;
 
-    // Cached powder-coat texture image for zero-overhead 60fps painting
-    juce::Image faceplateCache;
+    // Cached automotive metallic clearcoat texture
+    juce::Image chassisCache;
 
-    // 9 Mastering Controls
+    // 9 Mastering Controls with full Keyboard Editing
     KnobControl inGainKnob;
     KnobControl monoFreqKnob;
     KnobControl stereoWidthKnob;
@@ -95,24 +128,23 @@ private:
     std::vector< std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> > attachments;
     juce::ComboBox presetSelector;
 
-    // Interactive Corner Screws (Canvas-style tactile detail)
+    // Interactive CNC Corner Screws
     std::array<juce::Point<float>, 4> screwCenters {};
-    std::array<float, 4> screwAngles { { 0.35f, 1.15f, 2.20f, 0.80f } };
+    std::array<float, 4> screwAngles { { 0.40f, 1.25f, 2.10f, 0.75f } };
     std::array<float, 4> screwVelocities { { 0.0f, 0.0f, 0.0f, 0.0f } };
 
-    // Ballistic Metering State
-    float smoothPeakL = 0.0f;
-    float smoothPeakR = 0.0f;
-    float peakHoldL   = 0.0f;
-    float peakHoldR   = 0.0f;
-    int   holdTimerL  = 0;
-    int   holdTimerR  = 0;
+    // Dual Stereo Meter Ballistics (Input + Output)
+    MeterBallistics inMeter;
+    MeterBallistics outMeter;
 
     // Layout Regions
-    juce::Rectangle<int> outerFrameRect;
+    juce::Rectangle<int> outerPlateRect;
     juce::Rectangle<int> headerRect;
-    juce::Rectangle<int> telemetryPillRect;
-    juce::Rectangle<int> meterRect;
+    juce::Rectangle<int> telemetryRect;
+    juce::Rectangle<int> inMeterRect;
+    juce::Rectangle<int> outMeterRect;
+    juce::Rectangle<int> topBankRect;
+    juce::Rectangle<int> botBankRect;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (VulcanEditor)
 };
