@@ -1,6 +1,14 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 
+namespace
+{
+    constexpr std::array<const char*, 9> kParamIDs = {
+        "input_gain", "eq_low", "eq_mid", "eq_high",
+        "mono_freq", "haas_amount", "amount", "limiter_drive", "output_gain"
+    };
+}
+
 VulcanProcessor::VulcanProcessor()
     : AudioProcessor (BusesProperties()
                       .withInput  ("Input",  juce::AudioChannelSet::stereo(), true)
@@ -8,6 +16,9 @@ VulcanProcessor::VulcanProcessor()
       apvts (*this, nullptr, "Parameters", createParameterLayout())
 {
     apvts.state = juce::ValueTree("VulcanState");
+
+    for (const auto* id : kParamIDs)
+        apvts.addParameterListener (id, this);
 
     presets = {
         { "01. Default / Clean",      0.0f,  0.0f,  0.0f,  0.0f, 250.0f, 0.46f, 0.0f, 0.0f,  0.0f },
@@ -27,7 +38,17 @@ VulcanProcessor::VulcanProcessor()
     }
 }
 
-VulcanProcessor::~VulcanProcessor() {}
+VulcanProcessor::~VulcanProcessor()
+{
+    for (const auto* id : kParamIDs)
+        apvts.removeParameterListener (id, this);
+}
+
+void VulcanProcessor::parameterChanged (const juce::String&, float)
+{
+    if (! isApplyingPreset)
+        presetModified.store (true);
+}
 
 juce::AudioProcessorValueTreeState::ParameterLayout VulcanProcessor::createParameterLayout()
 {
@@ -53,6 +74,8 @@ void VulcanProcessor::setCurrentProgram (int index)
     currentPreset = index;
     auto& p = presets[index];
 
+    isApplyingPreset = true;
+
     auto setParam = [&](const juce::String& id, float val) {
         auto* param = apvts.getParameter(id);
         if (param != nullptr)
@@ -68,6 +91,9 @@ void VulcanProcessor::setCurrentProgram (int index)
     setParam("amount", p.amount);
     setParam("limiter_drive", p.limDrive);
     setParam("output_gain", p.outGain);
+
+    isApplyingPreset = false;
+    presetModified.store(false);
 }
 
 const juce::String VulcanProcessor::getProgramName (int index)
@@ -385,49 +411,3 @@ void VulcanProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::Midi
             if (ch == 1) maxR = juce::jmax(maxR, std::abs(finalSample));
         }
     }
-
-    if (numChannels >= 2) {
-        peakL.store(maxL);
-        peakR.store(maxR);
-    } else if (numChannels == 1) {
-        peakL.store(maxL);
-        peakR.store(maxL);
-    }
-}
-
-void VulcanProcessor::getStateInformation (juce::MemoryBlock& destData)
-{
-    auto state = apvts.copyState();
-    state.setProperty("currentPreset", currentPreset, nullptr);
-
-    std::unique_ptr<juce::XmlElement> xml (state.createXml());
-    if (xml != nullptr)
-        copyXmlToBinary (*xml, destData);
-}
-
-void VulcanProcessor::setStateInformation (const void* data, int sizeInBytes)
-{
-    std::unique_ptr<juce::XmlElement> xmlState (getXmlFromBinary (data, sizeInBytes));
-    if (xmlState != nullptr)
-    {
-        if (xmlState->hasTagName (apvts.state.getType()))
-        {
-            auto loadedState = juce::ValueTree::fromXml (*xmlState);
-            apvts.replaceState (loadedState);
-
-            if (loadedState.hasProperty("currentPreset")) {
-                currentPreset = loadedState.getProperty("currentPreset");
-            }
-        }
-    }
-}
-
-juce::AudioProcessorEditor* VulcanProcessor::createEditor()
-{
-    return new VulcanEditor(*this);
-}
-
-juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
-{
-    return new VulcanProcessor();
-}
