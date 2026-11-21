@@ -6,7 +6,8 @@
 #include <vector>
 #include <memory>
 
-class VulcanProcessor : public juce::AudioProcessor
+class VulcanProcessor : public juce::AudioProcessor,
+                        private juce::AudioProcessorValueTreeState::Listener
 {
 public:
     VulcanProcessor();
@@ -39,6 +40,7 @@ public:
     void setStateInformation (const void* data, int sizeInBytes) override;
 
     juce::AudioProcessorValueTreeState& getAPVTS() { return apvts; }
+    bool isPresetModified() const { return presetModified.load(); }
 
     // Public state for Editor attachments & lock-free Input/Output metering
     juce::AudioProcessorValueTreeState apvts;
@@ -48,6 +50,7 @@ public:
     std::atomic<float> peakR   { 0.0f };
 
 private:
+    void parameterChanged (const juce::String& parameterID, float newValue) override;
     juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
     void updatePreEq();
     void updateCrossover();
@@ -68,6 +71,8 @@ private:
 
     std::vector<Preset> presets;
     int currentPreset = 0;
+    std::atomic<bool> presetModified { false };
+    bool isApplyingPreset = false;
 
     double currentSampleRate = 44100.0;
     float currentMonoFreq = -1.0f;
