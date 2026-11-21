@@ -49,6 +49,7 @@ public:
 
 private:
     void timerCallback() override;
+    void syncPresetDisplay();
     void rebuildMetallicChassisCache();
 
     enum class ValueDisplayMode
@@ -148,3 +149,43 @@ private:
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (VulcanEditor)
 };
+
+PluginEditor
+#include "PluginProcessor.h"
+#include "PluginEditor.h"
+#include <cmath>
+
+namespace
+{
+    // Automotive Metallic Sapphire / Tanzanite Blue + Billet Chrome Palette
+    const juce::Colour kOuterBezelDark    (0xff040911);
+    const juce::Colour kPaintDeep         (0xff081b36);
+    const juce::Colour kPaintMid          (0xff0f3c78);
+    const juce::Colour kPaintHighlight    (0xff2372d4);
+    const juce::Colour kGlassRecess       (0xff061224);
+
+    const juce::Colour kChromeBright      (0xffe8f1fa);
+    const juce::Colour kChromeMid         (0xff8fa8c4);
+    const juce::Colour kChromeDark        (0xff2c3d52);
+
+    const juce::Colour kElectricCyan      (0xff4ce8ff);
+    const juce::Colour kWarmAmber         (0xffffbe3d);
+    const juce::Colour kCrimsonRed        (0xffff4d5e);
+    const juce::Colour kEmeraldSafe       (0xff2ce68a);
+
+    juce::Font makeAutoFont (float height, bool bold = false, bool mono = false)
+    {
+       #if JUCE_MAJOR_VERSION >= 8
+        auto opts = juce::FontOptions (height);
+        if (mono)
+            opts = opts.withName (juce::Font::getDefaultMonospacedFontName());
+        if (bold)
+            opts = opts.withStyle ("Bold");
+        return juce::Font (opts);
+       #else
+        if (mono)
+            return juce::Font (juce::Font::getDefaultMonospacedFontName(), height, bold ? juce::Font::bold : juce::Font::plain);
+        return juce::Font (height, bold ? juce::Font::bold : juce::Font::plain);
+       #endif
+    }
+}
