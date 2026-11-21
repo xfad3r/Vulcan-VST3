@@ -4,20 +4,23 @@
 
 namespace
 {
-    // Boutique Cobalt / Cerulean Blue + Warm Cream Silkscreen Palette
-    const juce::Colour kChassisDark     (0xff0b1926);
-    const juce::Colour kFaceplateTop    (0xff1e5682);
-    const juce::Colour kFaceplateBot    (0xff143c5c);
-    const juce::Colour kPanelRecess     (0xff11324d);
-    const juce::Colour kSilkCream       (0xfff4f0e6);
-    const juce::Colour kSilkMuted       (0xffb8d4e8);
-    const juce::Colour kSkyCyan         (0xff5ce1e6);
-    const juce::Colour kWarmAmber       (0xffffc857);
-    const juce::Colour kCoralAlert      (0xffff6b6b);
-    const juce::Colour kKnobBodyDark    (0xff172029);
-    const juce::Colour kKnobCapMid      (0xff263442);
+    // Automotive Metallic Sapphire / Tanzanite Blue + Billet Chrome Palette
+    const juce::Colour kOuterBezelDark    (0xff040911);
+    const juce::Colour kPaintDeep         (0xff081b36);
+    const juce::Colour kPaintMid          (0xff0f3c78);
+    const juce::Colour kPaintHighlight    (0xff2372d4);
+    const juce::Colour kGlassRecess       (0xff061224);
 
-    juce::Font makeBoutiqueFont (float height, bool bold = false, bool mono = false)
+    const juce::Colour kChromeBright      (0xffe8f1fa);
+    const juce::Colour kChromeMid         (0xff8fa8c4);
+    const juce::Colour kChromeDark        (0xff2c3d52);
+
+    const juce::Colour kElectricCyan      (0xff4ce8ff);
+    const juce::Colour kWarmAmber         (0xffffbe3d);
+    const juce::Colour kCrimsonRed        (0xffff4d5e);
+    const juce::Colour kEmeraldSafe       (0xff2ce68a);
+
+    juce::Font makeAutoFont (float height, bool bold = false, bool mono = false)
     {
        #if JUCE_MAJOR_VERSION >= 8
         auto opts = juce::FontOptions (height);
@@ -35,153 +38,248 @@ namespace
 }
 
 //==============================================================================
-// VulcanBoutiqueLookAndFeel Implementation
+// VulcanAutomotiveLookAndFeel Implementation
 //==============================================================================
-VulcanBoutiqueLookAndFeel::VulcanBoutiqueLookAndFeel()
+VulcanAutomotiveLookAndFeel::VulcanAutomotiveLookAndFeel()
 {
-    setColour (juce::PopupMenu::backgroundColourId, juce::Colour (0xff123450));
-    setColour (juce::PopupMenu::textColourId, kSilkCream);
-    setColour (juce::PopupMenu::highlightedBackgroundColourId, juce::Colour (0xff24689c));
-    setColour (juce::PopupMenu::highlightedTextColourId, kSkyCyan);
+    setColour (juce::PopupMenu::backgroundColourId, juce::Colour (0xff0a1f3d));
+    setColour (juce::PopupMenu::textColourId, kChromeBright);
+    setColour (juce::PopupMenu::highlightedBackgroundColourId, juce::Colour (0xff1c5cb3));
+    setColour (juce::PopupMenu::highlightedTextColourId, kElectricCyan);
+
+    setColour (juce::TextEditor::backgroundColourId, juce::Colour (0xff040c18));
+    setColour (juce::TextEditor::textColourId, kElectricCyan);
+    setColour (juce::TextEditor::highlightColourId, juce::Colour (0xff1d63b8));
+    setColour (juce::TextEditor::highlightedTextColourId, juce::Colours::white);
+    setColour (juce::TextEditor::outlineColourId, kElectricCyan);
+    setColour (juce::TextEditor::focusedOutlineColourId, kElectricCyan);
+    setColour (juce::CaretComponent::caretColourId, kElectricCyan);
 }
 
-void VulcanBoutiqueLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int width, int height,
-                                                  float sliderPos, float rotaryStartAngle,
-                                                  float rotaryEndAngle, juce::Slider& slider)
+void VulcanAutomotiveLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int width, int height,
+                                                    float sliderPos, float rotaryStartAngle,
+                                                    float rotaryEndAngle, juce::Slider& slider)
 {
     const auto bounds = juce::Rectangle<float> (static_cast<float> (x), static_cast<float> (y),
                                                 static_cast<float> (width), static_cast<float> (height)).reduced (4.0f);
     const float radius = juce::jmin (bounds.getWidth(), bounds.getHeight()) * 0.5f;
     const float cx = bounds.getCentreX();
-    const float cy = bounds.getCentreY();
+    const float cy = bounds.getCentreY() - 2.0f;
     const float toAngle = rotaryStartAngle + sliderPos * (rotaryEndAngle - rotaryStartAngle);
 
     const juce::Colour arcAccent = slider.findColour (juce::Slider::rotarySliderFillColourId);
     const bool isBipolar = static_cast<bool> (slider.getProperties().getWithDefault ("bipolar", false));
 
-    // 1. Boutique Silkscreen Dial Ticks & Dots (13 crisp markers)
-    const int numTicks = 13;
+    // 1. Engraved Chrome Scale Graduations (21 precision ticks)
+    const int numTicks = 21;
     for (int i = 0; i < numTicks; ++i)
     {
         const float prop = static_cast<float> (i) / static_cast<float> (numTicks - 1);
         const float ang = rotaryStartAngle + prop * (rotaryEndAngle - rotaryStartAngle);
-        const bool isMajor = (i == 0 || i == 6 || i == 12);
+        const bool isMajor = (i == 0 || i == 5 || i == 10 || i == 15 || i == 20);
 
         const float sinA = std::sin (ang);
         const float cosA = -std::cos (ang);
+        const float rIn  = radius * (isMajor ? 0.87f : 0.91f);
+        const float rOut = radius * 1.00f;
 
-        if (isMajor)
-        {
-            const float rIn  = radius * 0.86f;
-            const float rOut = radius * 0.99f;
-            g.setColour (kSilkCream.withAlpha (0.92f));
-            g.drawLine (cx + sinA * rIn, cy + cosA * rIn,
-                        cx + sinA * rOut, cy + cosA * rOut, 2.0f);
-        }
-        else
-        {
-            const float rDot = radius * 0.92f;
-            const float dotR = 1.6f;
-            g.setColour (kSilkCream.withAlpha (0.55f));
-            g.fillEllipse (cx + sinA * rDot - dotR, cy + cosA * rDot - dotR, dotR * 2.0f, dotR * 2.0f);
-        }
+        g.setColour (isMajor ? kChromeBright.withAlpha (0.85f) : kChromeMid.withAlpha (0.38f));
+        g.drawLine (cx + sinA * rIn, cy + cosA * rIn,
+                    cx + sinA * rOut, cy + cosA * rOut,
+                    isMajor ? 1.6f : 1.0f);
     }
 
-    // 2. Clean Value Arc Ring
-    const float arcR = radius * 0.78f;
-    juce::Path bgTrack;
-    bgTrack.addCentredArc (cx, cy, arcR, arcR, 0.0f, rotaryStartAngle, rotaryEndAngle, true);
-    g.setColour (kChassisDark.withAlpha (0.55f));
-    g.strokePath (bgTrack, juce::PathStrokeType (3.4f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    // 2. Recessed Luminous Value Track & Active Arc
+    const float arcR = radius * 0.79f;
+    juce::Path bgArc;
+    bgArc.addCentredArc (cx, cy, arcR, arcR, 0.0f, rotaryStartAngle, rotaryEndAngle, true);
+    g.setColour (juce::Colour (0xff030811).withAlpha (0.85f));
+    g.strokePath (bgArc, juce::PathStrokeType (3.6f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
 
     const float startAng = isBipolar ? (rotaryStartAngle + rotaryEndAngle) * 0.5f : rotaryStartAngle;
     if (std::abs (toAngle - startAng) > 0.01f)
     {
-        juce::Path activeArc;
-        activeArc.addCentredArc (cx, cy, arcR, arcR, 0.0f,
-                                 juce::jmin (startAng, toAngle),
-                                 juce::jmax (startAng, toAngle), true);
+        juce::Path valArc;
+        valArc.addCentredArc (cx, cy, arcR, arcR, 0.0f,
+                              juce::jmin (startAng, toAngle),
+                              juce::jmax (startAng, toAngle), true);
+
+        // Soft outer LED halo
+        g.setColour (arcAccent.withAlpha (0.28f));
+        g.strokePath (valArc, juce::PathStrokeType (6.5f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+
+        // Crisp core LED arc
         g.setColour (arcAccent);
-        g.strokePath (activeArc, juce::PathStrokeType (3.4f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+        g.strokePath (valArc, juce::PathStrokeType (3.2f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
     }
 
-    // 3. Stompbox Knob Physical Cast Shadow
-    const float knobR = radius * 0.67f;
-    g.setColour (juce::Colour (0xff07121c).withAlpha (0.55f));
-    g.fillEllipse (cx - knobR + 2.0f, cy - knobR + 4.5f, knobR * 2.0f, knobR * 2.0f);
+    // 3. Multi-Layered 3D Cast Shadow & Contact Ambient Occlusion
+    const float knobR = radius * 0.68f;
+    g.setColour (juce::Colours::black.withAlpha (0.48f));
+    g.fillEllipse (cx - knobR + 2.5f, cy - knobR + 7.5f, knobR * 2.0f, knobR * 2.0f);
 
-    // 4. Fluted Boutique Pedal Skirt (12 scalloped lobes rotating with the knob)
-    const int numFlutes = 12;
-    juce::Path flutedSkirt;
-    const int resolution = 96;
-    for (int step = 0; step <= resolution; ++step)
+    g.setColour (juce::Colours::black.withAlpha (0.72f));
+    g.fillEllipse (cx - knobR - 0.5f, cy - knobR + 3.5f, (knobR + 0.5f) * 2.0f, (knobR + 0.5f) * 2.0f);
+
+    // 4. 3D Extruded Cylindrical Skirt Wall (visible physical height below the knob)
+    const float skirtExtrudeY = 4.2f;
+    juce::ColourGradient cylinderWallGrad (juce::Colour (0xff0c1420), cx - knobR, cy + skirtExtrudeY,
+                                           juce::Colour (0xff364c66), cx, cy + skirtExtrudeY, true);
+    g.setGradientFill (cylinderWallGrad);
+    g.fillEllipse (cx - knobR, cy - knobR + skirtExtrudeY, knobR * 2.0f, knobR * 2.0f);
+
+    g.setColour (juce::Colour (0xff04080f));
+    g.drawEllipse (cx - knobR, cy - knobR + skirtExtrudeY, knobR * 2.0f, knobR * 2.0f, 1.2f);
+
+    // 5. 3D CNC Diamond-Knurled Outer Grip Ring (24 sculpted metallic teeth)
+    const int numTeeth = 24;
+    const float toothOuterR = knobR;
+    const float toothInnerR = knobR * 0.86f;
+
+    juce::ColourGradient skirtBaseGrad (juce::Colour (0xff496280), cx - knobR * 0.5f, cy - knobR * 0.7f,
+                                        juce::Colour (0xff101926), cx + knobR * 0.5f, cy + knobR * 0.8f, false);
+    g.setGradientFill (skirtBaseGrad);
+    g.fillEllipse (cx - toothOuterR, cy - toothOuterR, toothOuterR * 2.0f, toothOuterR * 2.0f);
+
+    for (int t = 0; t < numTeeth; ++t)
     {
-        const float theta = (static_cast<float> (step) / static_cast<float> (resolution)) * juce::MathConstants<float>::twoPi;
-        const float fluteWave = std::cos (static_cast<float> (numFlutes) * (theta - toAngle));
-        const float rMod = knobR * (0.955f + 0.045f * fluteWave);
-        const float px = cx + std::sin (theta) * rMod;
-        const float py = cy - std::cos (theta) * rMod;
+        const float tAng = toAngle + (static_cast<float> (t) / static_cast<float> (numTeeth)) * juce::MathConstants<float>::twoPi;
+        const float sA = std::sin (tAng);
+        const float cA = -std::cos (tAng);
 
-        if (step == 0)
-            flutedSkirt.startNewSubPath (px, py);
-        else
-            flutedSkirt.lineTo (px, py);
+        // Specular highlight ridge on each knurl tooth
+        g.setColour (kChromeBright.withAlpha (0.24f));
+        g.drawLine (cx + sA * toothInnerR - 0.5f, cy + cA * toothInnerR - 0.5f,
+                    cx + sA * toothOuterR - 0.5f, cy + cA * toothOuterR - 0.5f, 1.3f);
+
+        // Deep shadow groove next to ridge
+        g.setColour (juce::Colour (0xff050911).withAlpha (0.85f));
+        g.drawLine (cx + sA * toothInnerR + 0.7f, cy + cA * toothInnerR + 0.7f,
+                    cx + sA * toothOuterR + 0.7f, cy + cA * toothOuterR + 0.7f, 1.4f);
     }
-    flutedSkirt.closeSubPath();
 
-    juce::ColourGradient skirtGrad (juce::Colour (0xff2d3d4d), cx - knobR * 0.4f, cy - knobR * 0.7f,
-                                    kKnobBodyDark, cx + knobR * 0.5f, cy + knobR * 0.8f, false);
-    g.setGradientFill (skirtGrad);
-    g.fillPath (flutedSkirt);
+    // 6. 45-Degree Machined Chrome Chamfer Ring
+    const float bevelR = knobR * 0.84f;
+    juce::ColourGradient bevelGrad (kChromeBright, cx - bevelR * 0.65f, cy - bevelR * 0.65f,
+                                    juce::Colour (0xff121c2b), cx + bevelR * 0.65f, cy + bevelR * 0.65f, false);
+    g.setGradientFill (bevelGrad);
+    g.fillEllipse (cx - bevelR, cy - bevelR, bevelR * 2.0f, bevelR * 2.0f);
 
-    g.setColour (kChassisDark.withAlpha (0.85f));
-    g.strokePath (flutedSkirt, juce::PathStrokeType (1.3f));
-
-    // 5. Matte Anodized Top Cap
-    const float capR = knobR * 0.78f;
-    juce::ColourGradient capGrad (kKnobCapMid, cx - capR * 0.35f, cy - capR * 0.55f,
-                                  kKnobBodyDark, cx + capR * 0.45f, cy + capR * 0.65f, false);
-    g.setGradientFill (capGrad);
+    // 7. Anisotropic Lathe-Turned Metal Top Cap (Conical 3D Sheen)
+    const float capR = knobR * 0.75f;
+    juce::ColourGradient capBaseGrad (juce::Colour (0xff3a506b), cx - capR * 0.45f, cy - capR * 0.65f,
+                                      juce::Colour (0xff131e2e), cx + capR * 0.55f, cy + capR * 0.70f, false);
+    g.setGradientFill (capBaseGrad);
     g.fillEllipse (cx - capR, cy - capR, capR * 2.0f, capR * 2.0f);
 
-    // Crisp rim highlight
-    g.setColour (kSilkCream.withAlpha (0.14f));
-    g.drawEllipse (cx - capR + 0.6f, cy - capR + 0.6f, (capR - 0.6f) * 2.0f, (capR - 0.6f) * 2.0f, 1.0f);
+    // Conical specular light wedges (gives authentic turned-aluminum 3D reflection)
+    {
+        juce::Graphics::ScopedSaveState state (g);
+        juce::Path clipCap;
+        clipCap.addEllipse (cx - capR, cy - capR, capR * 2.0f, capR * 2.0f);
+        g.reduceClipRegion (clipCap);
 
-    // 6. Bold Warm-Cream Boutique Pointer Bar
+        const float wedgeSpan = 0.52f;
+        const float sheenAng1 = -0.65f + (toAngle * 0.18f);
+        const float sheenAng2 = sheenAng1 + juce::MathConstants<float>::pi;
+
+        for (float baseA : { sheenAng1, sheenAng2 })
+        {
+            juce::Path wedge;
+            wedge.startNewSubPath (cx, cy);
+            wedge.lineTo (cx + std::sin (baseA - wedgeSpan) * capR * 1.3f, cy - std::cos (baseA - wedgeSpan) * capR * 1.3f);
+            wedge.lineTo (cx + std::sin (baseA + wedgeSpan) * capR * 1.3f, cy - std::cos (baseA + wedgeSpan) * capR * 1.3f);
+            wedge.closeSubPath();
+
+            g.setColour (kChromeBright.withAlpha (0.14f));
+            g.fillPath (wedge);
+        }
+
+        // Subtle concentric lathe micro-rings
+        g.setColour (juce::Colours::white.withAlpha (0.045f));
+        g.drawEllipse (cx - capR * 0.62f, cy - capR * 0.62f, capR * 1.24f, capR * 1.24f, 0.8f);
+        g.drawEllipse (cx - capR * 0.36f, cy - capR * 0.36f, capR * 0.72f, capR * 0.72f, 0.8f);
+    }
+
+    // Crisp rim highlight on top cap
+    g.setColour (kChromeBright.withAlpha (0.35f));
+    g.drawEllipse (cx - capR + 0.5f, cy - capR + 0.5f, (capR - 0.5f) * 2.0f, (capR - 0.5f) * 2.0f, 1.0f);
+
+    // 8. Milled 3D Indicator Groove & Luminous Pointer Bar
     const float pSin = std::sin (toAngle);
     const float pCos = -std::cos (toAngle);
-    const float pStart = capR * 0.22f;
-    const float pEnd   = capR * 0.92f;
+    const float pIn  = capR * 0.24f;
+    const float pOut = capR * 0.90f;
 
-    juce::Path pointerBar;
-    pointerBar.startNewSubPath (cx + pSin * pStart, cy + pCos * pStart);
-    pointerBar.lineTo (cx + pSin * pEnd, cy + pCos * pEnd);
+    // Dark recessed groove shadow
+    g.setColour (juce::Colour (0xff04080e));
+    g.drawLine (cx + pSin * pIn + 0.9f, cy + pCos * pIn + 1.1f,
+                cx + pSin * pOut + 0.9f, cy + pCos * pOut + 1.1f, 3.8f);
 
-    g.setColour (kSilkCream);
-    g.strokePath (pointerBar, juce::PathStrokeType (3.4f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    // Glowing indicator core
+    juce::Path pointerLine;
+    pointerLine.startNewSubPath (cx + pSin * pIn, cy + pCos * pIn);
+    pointerLine.lineTo (cx + pSin * pOut, cy + pCos * pOut);
 
-    // Subtle center dimple
-    g.setColour (kChassisDark.withAlpha (0.65f));
-    g.fillEllipse (cx - 2.5f, cy - 2.5f, 5.0f, 5.0f);
+    g.setColour (arcAccent.withAlpha (0.45f));
+    g.strokePath (pointerLine, juce::PathStrokeType (4.4f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+
+    g.setColour (juce::Colours::white);
+    g.strokePath (pointerLine, juce::PathStrokeType (2.4f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
 }
 
-void VulcanBoutiqueLookAndFeel::drawComboBox (juce::Graphics& g, int width, int height, bool,
-                                              int, int, int, int, juce::ComboBox&)
+juce::Label* VulcanAutomotiveLookAndFeel::createSliderTextBox (juce::Slider& slider)
+{
+    auto* l = juce::LookAndFeel_V4::createSliderTextBox (slider);
+    l->setFont (makeAutoFont (11.5f, true, true));
+    l->setJustificationType (juce::Justification::centred);
+    // Single-click OR double-click opens immediate keyboard numeric editing
+    l->setEditable (true, true, false);
+    l->setColour (juce::Label::textColourId, kChromeBright);
+    l->setColour (juce::Label::textWhenEditingColourId, kElectricCyan);
+    l->setColour (juce::Label::backgroundWhenEditingColourId, juce::Colour (0xff030914));
+    l->setColour (juce::Label::outlineWhenEditingColourId, kElectricCyan);
+    return l;
+}
+
+void VulcanAutomotiveLookAndFeel::drawLabel (juce::Graphics& g, juce::Label& label)
+{
+    if (label.isBeingEdited())
+        return;
+
+    const auto bounds = label.getLocalBounds().toFloat().reduced (1.0f);
+
+    // Smoked-Glass & Chrome Digital Readout Pill
+    g.setColour (juce::Colour (0xff040b16).withAlpha (0.88f));
+    g.fillRoundedRectangle (bounds, 4.0f);
+
+    g.setColour (kChromeMid.withAlpha (0.38f));
+    g.drawRoundedRectangle (bounds, 4.0f, 1.0f);
+
+    // Subtle top glass reflection
+    g.setColour (juce::Colours::white.withAlpha (0.06f));
+    g.fillRoundedRectangle (bounds.getX() + 1.5f, bounds.getY() + 1.0f, bounds.getWidth() - 3.0f, bounds.getHeight() * 0.42f, 2.5f);
+
+    g.setFont (label.getFont());
+    g.setColour (label.findColour (juce::Label::textColourId));
+    g.drawText (label.getText(), label.getLocalBounds(), label.getJustificationType(), false);
+}
+
+void VulcanAutomotiveLookAndFeel::drawComboBox (juce::Graphics& g, int width, int height, bool,
+                                                int, int, int, int, juce::ComboBox&)
 {
     const auto box = juce::Rectangle<float> (0.0f, 0.0f, static_cast<float> (width), static_cast<float> (height));
 
-    // Warm Cream Pill Selector (Signature Canvas Audio contrast accent)
-    g.setColour (kChassisDark.withAlpha (0.35f));
-    g.fillRoundedRectangle (box.translated (0.0f, 2.0f), 6.0f);
+    // Machined Dark Chrome & Glass Selector Bezel
+    g.setColour (juce::Colour (0xff040b16));
+    g.fillRoundedRectangle (box, 5.0f);
 
-    g.setColour (kSilkCream);
-    g.fillRoundedRectangle (box, 6.0f);
+    juce::ColourGradient rimGrad (kChromeBright.withAlpha (0.65f), 0.0f, 0.0f,
+                                  kChromeDark, 0.0f, static_cast<float> (height), false);
+    g.setGradientFill (rimGrad);
+    g.drawRoundedRectangle (box.reduced (0.5f), 5.0f, 1.2f);
 
-    g.setColour (kChassisDark.withAlpha (0.4f));
-    g.drawRoundedRectangle (box.reduced (0.5f), 6.0f, 1.2f);
-
-    // Dark Blue Dropdown Chevron
+    // Chrome Dropdown Chevron
     juce::Path chevron;
     const float ax = static_cast<float> (width) - 16.0f;
     const float ay = static_cast<float> (height) * 0.5f;
@@ -189,25 +287,25 @@ void VulcanBoutiqueLookAndFeel::drawComboBox (juce::Graphics& g, int width, int 
     chevron.lineTo (ax, ay + 2.5f);
     chevron.lineTo (ax + 4.5f, ay - 2.0f);
 
-    g.setColour (kFaceplateBot);
+    g.setColour (kElectricCyan);
     g.strokePath (chevron, juce::PathStrokeType (2.0f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
 }
 
-void VulcanBoutiqueLookAndFeel::positionComboBoxText (juce::ComboBox& box, juce::Label& label)
+void VulcanAutomotiveLookAndFeel::positionComboBoxText (juce::ComboBox& box, juce::Label& label)
 {
     label.setBounds (10, 1, box.getWidth() - 28, box.getHeight() - 2);
     label.setFont (getComboBoxFont (box));
-    label.setColour (juce::Label::textColourId, kFaceplateBot);
+    label.setColour (juce::Label::textColourId, kChromeBright);
 }
 
-juce::Font VulcanBoutiqueLookAndFeel::getComboBoxFont (juce::ComboBox&)
+juce::Font VulcanAutomotiveLookAndFeel::getComboBoxFont (juce::ComboBox&)
 {
-    return makeBoutiqueFont (12.0f, true, false);
+    return makeAutoFont (12.0f, true, false);
 }
 
-juce::Font VulcanBoutiqueLookAndFeel::getPopupMenuFont()
+juce::Font VulcanAutomotiveLookAndFeel::getPopupMenuFont()
 {
-    return makeBoutiqueFont (12.0f, true, false);
+    return makeAutoFont (12.0f, true, false);
 }
 
 //==============================================================================
@@ -216,20 +314,20 @@ juce::Font VulcanBoutiqueLookAndFeel::getPopupMenuFont()
 VulcanEditor::VulcanEditor (VulcanProcessor& p)
     : AudioProcessorEditor (&p), audioProcessor (p)
 {
-    setLookAndFeel (&boutiqueLnf);
+    setLookAndFeel (&automotiveLnf);
 
-    // Top Row: 5 Core Controls (Hero size for Stereo Width)
-    setupKnob (inGainKnob,      "input_gain",  "INPUT",        "TRIM",      "dB", kWarmAmber, true,  false);
-    setupKnob (monoFreqKnob,    "mono_freq",   "MONO LOCK",    "X-OVER",    "Hz", kSilkCream, false, false);
-    setupKnob (stereoWidthKnob, "haas_amount", "STEREO WIDTH", "HAAS L/R",  "%",  kSkyCyan,   false, true);
-    setupKnob (characterKnob,   "amount",      "HARMONICS",    "SATURATE",  "%",  kWarmAmber, false, false);
-    setupKnob (outGainKnob,     "output_gain", "OUTPUT",       "LEVEL",     "dB", kSilkCream, true,  false);
+    // Top Bank: 5 Core Controls (with direct Keyboard numeric input on every readout)
+    setupKnob (inGainKnob,      "input_gain",  "INPUT",        "TRIM",     kWarmAmber,    ValueDisplayMode::Decibels,        true,  false, 0.0);
+    setupKnob (monoFreqKnob,    "mono_freq",   "MONO LOCK",    "X-OVER",   kChromeBright, ValueDisplayMode::FrequencyHz,     false, false, 250.0);
+    setupKnob (stereoWidthKnob, "haas_amount", "STEREO WIDTH", "HAAS L/R", kElectricCyan, ValueDisplayMode::Percent100From1, false, true,  0.46);
+    setupKnob (characterKnob,   "amount",      "HARMONICS",    "SATURATE", kWarmAmber,    ValueDisplayMode::Percent100From2, false, false, 0.0);
+    setupKnob (outGainKnob,     "output_gain", "OUTPUT",       "LEVEL",    kChromeBright, ValueDisplayMode::Decibels,        true,  false, 0.0);
 
-    // Bottom Row: 4 Tone & Ceiling Controls
-    setupKnob (eqLowKnob,        "eq_low",        "LOW",         "100 Hz",  "dB", kSkyCyan,   true,  false);
-    setupKnob (eqMidKnob,        "eq_mid",        "MID",         "2.5 kHz", "dB", kSkyCyan,   true,  false);
-    setupKnob (eqHighKnob,       "eq_high",       "HIGH",        "10 kHz",  "dB", kSkyCyan,   true,  false);
-    setupKnob (limiterDriveKnob, "limiter_drive", "CEILING DRV", "LIMITER", "dB", kWarmAmber, false, false);
+    // Bottom Bank: 4 Pre-EQ & Limiter Controls
+    setupKnob (eqLowKnob,        "eq_low",        "LOW",         "100 Hz",  kElectricCyan, ValueDisplayMode::Decibels, true,  false, 0.0);
+    setupKnob (eqMidKnob,        "eq_mid",        "MID",         "2.5 kHz", kElectricCyan, ValueDisplayMode::Decibels, true,  false, 0.0);
+    setupKnob (eqHighKnob,       "eq_high",       "HIGH",        "10 kHz",  kElectricCyan, ValueDisplayMode::Decibels, true,  false, 0.0);
+    setupKnob (limiterDriveKnob, "limiter_drive", "CEILING DRV", "LIMITER", kWarmAmber,    ValueDisplayMode::Decibels, false, false, 0.0);
 
     // Preset Selector
     addAndMakeVisible (presetSelector);
@@ -244,7 +342,7 @@ VulcanEditor::VulcanEditor (VulcanProcessor& p)
             audioProcessor.setCurrentProgram (idx);
     };
 
-    setSize (860, 440);
+    setSize (940, 470);
     startTimerHz (30);
 }
 
@@ -256,21 +354,68 @@ VulcanEditor::~VulcanEditor()
 
 void VulcanEditor::setupKnob (KnobControl& kc, const juce::String& paramID,
                               const juce::String& titleText, const juce::String& subText,
-                              const juce::String& unitText, juce::Colour arcCol,
-                              bool bipolar, bool hero)
+                              juce::Colour arcCol, ValueDisplayMode mode,
+                              bool bipolar, bool hero, double defaultVal)
 {
     kc.title = titleText;
     kc.subLabel = subText;
-    kc.unit = unitText;
     kc.arcColour = arcCol;
+    kc.displayMode = mode;
     kc.isBipolar = bipolar;
     kc.isHero = hero;
 
     kc.slider.setSliderStyle (juce::Slider::RotaryHorizontalVerticalDrag);
-    kc.slider.setTextBoxStyle (juce::Slider::NoTextBox, false, 0, 0);
+    kc.slider.setTextBoxStyle (juce::Slider::TextBoxBelow, false, 78, 20);
+    kc.slider.setWantsKeyboardFocus (true);
+    kc.slider.setDoubleClickReturnValue (true, defaultVal);
     kc.slider.setColour (juce::Slider::rotarySliderFillColourId, arcCol);
+    kc.slider.setColour (juce::Slider::textBoxTextColourId, hero ? kElectricCyan : kChromeBright);
     kc.slider.getProperties().set ("bipolar", bipolar);
-    kc.slider.onValueChange = [this] { repaint(); };
+
+    // Custom Bidirectional Keyboard String <-> Parameter Conversion
+    kc.slider.textFromValueFunction = [mode, bipolar] (double val) -> juce::String
+    {
+        switch (mode)
+        {
+            case ValueDisplayMode::FrequencyHz:
+                return juce::String (static_cast<int> (std::round (val))) + " Hz";
+
+            case ValueDisplayMode::Percent100From1:
+                return juce::String (static_cast<int> (std::round (val * 100.0))) + " %";
+
+            case ValueDisplayMode::Percent100From2:
+                return juce::String (static_cast<int> (std::round (val * 50.0))) + " %";
+
+            case ValueDisplayMode::Decibels:
+            default:
+            {
+                const juce::String prefix = (bipolar && val > 0.05) ? "+" : "";
+                return prefix + juce::String (val, 1) + " dB";
+            }
+        }
+    };
+
+    kc.slider.valueFromTextFunction = [mode] (const juce::String& text) -> double
+    {
+        const juce::String cleaned = text.retainCharacters ("0123456789.-");
+        const double num = cleaned.getDoubleValue();
+
+        switch (mode)
+        {
+            case ValueDisplayMode::Percent100From1:
+                return juce::jlimit (0.0, 100.0, num) / 100.0;
+
+            case ValueDisplayMode::Percent100From2:
+                return juce::jlimit (0.0, 100.0, num) / 50.0;
+
+            case ValueDisplayMode::FrequencyHz:
+            case ValueDisplayMode::Decibels:
+            default:
+                return num;
+        }
+    };
+
+    kc.slider.onValueChange = [this] { repaint (telemetryRect); };
 
     addAndMakeVisible (kc.slider);
     attachments.push_back (std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
@@ -279,7 +424,6 @@ void VulcanEditor::setupKnob (KnobControl& kc, const juce::String& paramID,
 
 void VulcanEditor::mouseDown (const juce::MouseEvent& event)
 {
-    // Easter egg inspired by Canvas Audio Prickly Clip: clicking corner screws spins them!
     const auto pos = event.position;
     for (size_t i = 0; i < screwCenters.size(); ++i)
     {
@@ -298,7 +442,6 @@ void VulcanEditor::timerCallback()
     if (presetSelector.getSelectedId() != expectedId)
         presetSelector.setSelectedId (expectedId, juce::dontSendNotification);
 
-    // Animate any spinning corner screws
     bool screwMoving = false;
     for (size_t i = 0; i < screwCenters.size(); ++i)
     {
@@ -310,405 +453,417 @@ void VulcanEditor::timerCallback()
         }
     }
 
-    // Ballistic stereo meter smoothing
-    const float rawL = audioProcessor.peakL.load();
-    const float rawR = audioProcessor.peakR.load();
-
-    smoothPeakL = (rawL > smoothPeakL) ? rawL : (smoothPeakL * 0.85f);
-    smoothPeakR = (rawR > smoothPeakR) ? rawR : (smoothPeakR * 0.85f);
-
-    if (rawL >= peakHoldL) { peakHoldL = rawL; holdTimerL = 42; }
-    else if (--holdTimerL <= 0) { peakHoldL *= 0.94f; }
-
-    if (rawR >= peakHoldR) { peakHoldR = rawR; holdTimerR = 42; }
-    else if (--holdTimerR <= 0) { peakHoldR *= 0.94f; }
+    inMeter.update (audioProcessor.inPeakL.load(), audioProcessor.inPeakR.load());
+    outMeter.update (audioProcessor.peakL.load(),  audioProcessor.peakR.load());
 
     if (screwMoving)
         repaint();
     else
     {
-        repaint (meterRect);
-        repaint (telemetryPillRect);
+        repaint (inMeterRect);
+        repaint (outMeterRect);
+        repaint (telemetryRect);
     }
 }
 
-void VulcanEditor::rebuildFaceplateTexture()
+void VulcanEditor::rebuildMetallicChassisCache()
 {
     const int w = getWidth();
     const int h = getHeight();
     if (w <= 0 || h <= 0)
         return;
 
-    faceplateCache = juce::Image (juce::Image::ARGB, w, h, true);
-    juce::Graphics g (faceplateCache);
+    chassisCache = juce::Image (juce::Image::ARGB, w, h, true);
+    juce::Graphics g (chassisCache);
 
-    // 1. Deep Navy Outer Bevel Chassis
-    g.fillAll (kChassisDark);
+    // 1. Deep Obsidian Outer Chassis Frame
+    g.fillAll (kOuterBezelDark);
 
-    const auto plate = outerFrameRect.toFloat();
+    const auto plate = outerPlateRect.toFloat();
 
-    // Soft cast shadow behind blue faceplate
-    g.setColour (juce::Colours::black.withAlpha (0.5f));
-    g.fillRoundedRectangle (plate.translated (0.0f, 3.0f), 14.0f);
+    // 2. Automotive Sapphire / Tanzanite Metallic Multi-Stop Base Coat
+    juce::ColourGradient autoBaseGrad (kPaintDeep, 0.0f, plate.getY(),
+                                       kPaintMid, plate.getWidth() * 0.45f, plate.getHeight() * 0.42f, false);
+    autoBaseGrad.addColour (0.35, kPaintHighlight);
+    autoBaseGrad.addColour (0.68, kPaintMid);
+    autoBaseGrad.addColour (1.00, kPaintDeep);
 
-    // 2. Cobalt / Cerulean Matte Powder-Coated Blue Faceplate
-    juce::ColourGradient blueGrad (kFaceplateTop, 0.0f, plate.getY(),
-                                   kFaceplateBot, 0.0f, plate.getBottom(), false);
-    g.setGradientFill (blueGrad);
-    g.fillRoundedRectangle (plate, 14.0f);
+    g.setGradientFill (autoBaseGrad);
+    g.fillRoundedRectangle (plate, 12.0f);
 
-    // Top edge metallic highlight & bottom bevel shadow
-    g.setColour (juce::Colour (0xff4ea8de).withAlpha (0.45f));
-    g.drawRoundedRectangle (plate.reduced (0.8f), 13.5f, 1.5f);
-
-    // 3. Deterministic Powder-Coat Mineral Micro-Texture
-    juce::Random texRng (20261121);
-    for (int i = 0; i < 4200; ++i)
+    // 3. Curved Clearcoat Specular Sweep (Automotive Body Reflection)
     {
-        const float rx = plate.getX() + texRng.nextFloat() * plate.getWidth();
-        const float ry = plate.getY() + texRng.nextFloat() * plate.getHeight();
-        const bool lightSpeck = (i % 2 == 0);
-        g.setColour (lightSpeck ? juce::Colours::white.withAlpha (0.022f)
-                                : kChassisDark.withAlpha (0.045f));
-        g.fillRect (rx, ry, 1.5f, 1.5f);
+        juce::Graphics::ScopedSaveState state (g);
+        juce::Path plateClip;
+        plateClip.addRoundedRectangle (plate, 12.0f);
+        g.reduceClipRegion (plateClip);
+
+        juce::ColourGradient clearcoatSheen (juce::Colour (0xff6bb8ff).withAlpha (0.20f), plate.getX(), plate.getY() + 35.0f,
+                                             juce::Colours::transparentBlack, plate.getRight(), plate.getBottom() - 60.0f, false);
+        clearcoatSheen.addColour (0.28, juce::Colour (0xff8fd0ff).withAlpha (0.24f));
+        clearcoatSheen.addColour (0.52, juce::Colours::transparentBlack);
+        g.setGradientFill (clearcoatSheen);
+        g.fillRect (plate);
+
+        // 4. High-Density Metallic Aluminum & Mica Flakes (Directional Light-Modulated Sparkle)
+        juce::Random flakeRng (20261121);
+        const float lightCenterX = plate.getWidth() * 0.42f;
+        const float lightCenterY = plate.getHeight() * 0.34f;
+
+        for (int i = 0; i < 14000; ++i)
+        {
+            const float fx = plate.getX() + flakeRng.nextFloat() * plate.getWidth();
+            const float fy = plate.getY() + flakeRng.nextFloat() * plate.getHeight();
+
+            const float dx = (fx - lightCenterX) / plate.getWidth();
+            const float dy = (fy - lightCenterY) / plate.getHeight();
+            const float dist = std::sqrt (dx * dx + dy * dy);
+            const float lightCatch = juce::jlimit (0.0f, 1.0f, 1.0f - dist * 1.35f);
+
+            const float roll = flakeRng.nextFloat();
+            if (roll > 0.42f)
+            {
+                // Specular silver-blue metallic flake
+                const float alpha = (0.04f + 0.16f * lightCatch) * flakeRng.nextFloat();
+                g.setColour (juce::Colour (0xffa8dcff).withAlpha (alpha));
+            }
+            else
+            {
+                // Deep sapphire micro-grain shadow
+                g.setColour (juce::Colour (0xff030c1c).withAlpha (0.07f * flakeRng.nextFloat()));
+            }
+
+            const float flakeSize = (roll > 0.88f) ? 1.6f : 1.1f;
+            g.fillRect (fx, fy, flakeSize, flakeSize);
+        }
     }
 
-    // 4. Classic Cream Boutique Silkscreen Inner Border Frame
-    const auto silkFrame = plate.reduced (18.0f);
-    g.setColour (kSilkCream.withAlpha (0.78f));
-    g.drawRoundedRectangle (silkFrame, 10.0f, 1.8f);
+    // 5. CNC-Machined Chrome Outer Bevel & Specular Edge Trim
+    juce::ColourGradient chromeTrimGrad (kChromeBright.withAlpha (0.85f), 0.0f, plate.getY(),
+                                         kChromeDark, 0.0f, plate.getBottom(), false);
+    chromeTrimGrad.addColour (0.50, kChromeMid.withAlpha (0.55f));
+    g.setGradientFill (chromeTrimGrad);
+    g.drawRoundedRectangle (plate.reduced (0.75f), 11.5f, 1.8f);
 
-    // Subtle secondary inner hairline
-    g.setColour (kSilkCream.withAlpha (0.22f));
-    g.drawRoundedRectangle (silkFrame.reduced (4.0f), 7.5f, 1.0f);
+    // 6. Smoked-Glass & Chrome Control Sub-Panels
+    auto drawRecessedBay = [&] (juce::Rectangle<int> r)
+    {
+        const auto rf = r.toFloat();
+        g.setColour (kGlassRecess.withAlpha (0.74f));
+        g.fillRoundedRectangle (rf, 8.0f);
 
-    // 5. Recessed Sub-Zones for Top & Bottom Control Banks
-    const auto topBankRect = juce::Rectangle<float> (silkFrame.getX() + 14.0f, 76.0f, 712.0f, 166.0f);
-    const auto botBankRect = juce::Rectangle<float> (silkFrame.getX() + 14.0f, 252.0f, 712.0f, 146.0f);
+        // Inner top shadow
+        g.setColour (juce::Colours::black.withAlpha (0.55f));
+        g.drawRoundedRectangle (rf, 8.0f, 1.4f);
 
-    g.setColour (kPanelRecess.withAlpha (0.42f));
-    g.fillRoundedRectangle (topBankRect, 9.0f);
-    g.fillRoundedRectangle (botBankRect, 9.0f);
+        // Bottom chrome catch-light
+        g.setColour (kChromeBright.withAlpha (0.18f));
+        g.drawRoundedRectangle (rf.reduced (1.0f), 7.5f, 0.9f);
+    };
 
-    g.setColour (kSilkCream.withAlpha (0.18f));
-    g.drawRoundedRectangle (topBankRect, 9.0f, 1.0f);
-    g.drawRoundedRectangle (botBankRect, 9.0f, 1.0f);
+    drawRecessedBay (topBankRect);
+    drawRecessedBay (botBankRect);
 
-    // Subtle vertical dividers separating EQ trio from Limiter Drive in bottom bank
-    g.setColour (kSilkCream.withAlpha (0.20f));
-    g.drawLine (568.0f, botBankRect.getY() + 14.0f, 568.0f, botBankRect.getBottom() - 14.0f, 1.2f);
+    // Machined Chrome Divider between EQ Trio and Ceiling Limiter in Bottom Bank
+    const float divX = 632.0f;
+    g.setColour (juce::Colours::black.withAlpha (0.6f));
+    g.drawLine (divX - 1.0f, static_cast<float> (botBankRect.getY() + 14),
+                divX - 1.0f, static_cast<float> (botBankRect.getBottom() - 14), 1.2f);
+    g.setColour (kChromeBright.withAlpha (0.22f));
+    g.drawLine (divX + 0.5f, static_cast<float> (botBankRect.getY() + 14),
+                divX + 0.5f, static_cast<float> (botBankRect.getBottom() - 14), 1.0f);
 }
 
 void VulcanEditor::resized()
 {
-    outerFrameRect    = { 8, 8, getWidth() - 16, getHeight() - 16 };
-    headerRect        = { 34, 24, getWidth() - 68, 46 };
-    telemetryPillRect = { 346, 33, 276, 28 };
-    presetSelector.setBounds (638, 32, 184, 30);
+    outerPlateRect = { 6, 6, getWidth() - 12, getHeight() - 12 };
+    headerRect     = { 24, 18, getWidth() - 48, 50 };
+    telemetryRect  = { 386, 28, 316, 30 };
+    presetSelector.setBounds (718, 28, 198, 30);
 
-    meterRect = { 758, 76, 66, 322 };
+    inMeterRect    = { 24,  80, 72, 366 };
+    outMeterRect   = { 844, 80, 72, 366 };
 
-    // 4 Corner Screw Positions
-    screwCenters[0] = { 21.0f, 21.0f };
-    screwCenters[1] = { static_cast<float> (getWidth()) - 21.0f, 21.0f };
-    screwCenters[2] = { 21.0f, static_cast<float> (getHeight()) - 21.0f };
-    screwCenters[3] = { static_cast<float> (getWidth()) - 21.0f, static_cast<float> (getHeight()) - 21.0f };
+    topBankRect    = { 108, 80,  724, 188 };
+    botBankRect    = { 108, 280, 724, 166 };
 
-    auto placeKnob = [] (KnobControl& kc, int cx, int cy, int diameter)
+    // 4 Corner CNC Screws
+    screwCenters[0] = { 17.0f, 17.0f };
+    screwCenters[1] = { static_cast<float> (getWidth()) - 17.0f, 17.0f };
+    screwCenters[2] = { 17.0f, static_cast<float> (getHeight()) - 17.0f };
+    screwCenters[3] = { static_cast<float> (getWidth()) - 17.0f, static_cast<float> (getHeight()) - 17.0f };
+
+    auto placeKnob = [] (KnobControl& kc, int cx, int cy, int dialDiam)
     {
-        kc.bounds = { cx - diameter / 2, cy - diameter / 2, diameter, diameter };
-        kc.slider.setBounds (kc.bounds);
-        kc.readoutBounds = { cx - 36, cy + diameter / 2 + 2, 72, 18 };
+        const int textBoxH = 20;
+        const int totalW = juce::jmax (dialDiam + 8, 84);
+        const int totalH = dialDiam + textBoxH + 4;
+
+        kc.dialBounds   = { cx - dialDiam / 2, cy - dialDiam / 2, dialDiam, dialDiam };
+        kc.sliderBounds = { cx - totalW / 2,   cy - dialDiam / 2, totalW,   totalH };
+        kc.slider.setBounds (kc.sliderBounds);
     };
 
-    // Top Row (5 Controls — centered at y = 160)
-    const int topY = 160;
-    placeKnob (inGainKnob,      102, topY, 84);
-    placeKnob (monoFreqKnob,    244, topY, 84);
-    placeKnob (stereoWidthKnob, 396, topY - 2, 102); // Center Hero Knob
-    placeKnob (characterKnob,   548, topY, 84);
-    placeKnob (outGainKnob,     684, topY, 84);
+    // Top Bank: 5 Controls (centered at y = 172)
+    const int topY = 172;
+    placeKnob (inGainKnob,      178, topY,     84);
+    placeKnob (monoFreqKnob,    322, topY,     84);
+    placeKnob (stereoWidthKnob, 470, topY - 2, 102); // Hero 3D Dial
+    placeKnob (characterKnob,   618, topY,     84);
+    placeKnob (outGainKnob,     762, topY,     84);
 
-    // Bottom Row (3 Pre-EQ Knobs + Limiter Drive — centered at y = 326)
-    const int botY = 326;
-    placeKnob (eqLowKnob,        124, botY, 74);
-    placeKnob (eqMidKnob,        296, botY, 74);
-    placeKnob (eqHighKnob,       468, botY, 74);
-    placeKnob (limiterDriveKnob, 654, botY, 78);
+    // Bottom Bank: 3 Pre-EQ Knobs + Limiter Drive (centered at y = 362)
+    const int botY = 362;
+    placeKnob (eqLowKnob,        198, botY, 74);
+    placeKnob (eqMidKnob,        364, botY, 74);
+    placeKnob (eqHighKnob,       530, botY, 74);
+    placeKnob (limiterDriveKnob, 732, botY, 78);
 
-    rebuildFaceplateTexture();
+    rebuildMetallicChassisCache();
 }
 
-juce::String VulcanEditor::formatKnobValue (const KnobControl& kc, const juce::String& id) const
+void VulcanEditor::drawChromeScrew (juce::Graphics& g, juce::Point<float> c, float r, float angleRad)
 {
-    const float val = static_cast<float> (kc.slider.getValue());
-
-    if (id == "mono_freq")
-        return juce::String (static_cast<int> (std::round (val))) + " Hz";
-
-    if (id == "haas_amount")
-        return juce::String (static_cast<int> (std::round (val * 100.0f))) + "%";
-
-    if (id == "amount")
-        return juce::String (static_cast<int> (std::round (val * 50.0f))) + "%";
-
-    const juce::String prefix = (kc.isBipolar && val > 0.05f) ? "+" : "";
-    return prefix + juce::String (val, 1) + " " + kc.unit;
-}
-
-void VulcanEditor::drawBoutiqueScrew (juce::Graphics& g, juce::Point<float> c, float r, float angleRad)
-{
-    // Cast shadow
-    g.setColour (kChassisDark.withAlpha (0.65f));
+    g.setColour (juce::Colours::black.withAlpha (0.75f));
     g.fillEllipse (c.x - r + 1.0f, c.y - r + 1.5f, r * 2.0f, r * 2.0f);
 
-    // Brushed stainless screw head
-    juce::ColourGradient metalGrad (juce::Colour (0xffd8e2ec), c.x - r * 0.5f, c.y - r * 0.5f,
-                                    juce::Colour (0xff6c7a89), c.x + r * 0.6f, c.y + r * 0.6f, false);
+    juce::ColourGradient metalGrad (kChromeBright, c.x - r * 0.55f, c.y - r * 0.55f,
+                                    kChromeDark,   c.x + r * 0.65f, c.y + r * 0.65f, false);
     g.setGradientFill (metalGrad);
     g.fillEllipse (c.x - r, c.y - r, r * 2.0f, r * 2.0f);
 
-    g.setColour (kChassisDark.withAlpha (0.8f));
+    g.setColour (juce::Colour (0xff050911));
     g.drawEllipse (c.x - r, c.y - r, r * 2.0f, r * 2.0f, 1.0f);
 
-    // Rotatable Phillips cross-slot
-    const float s = std::sin (angleRad) * (r * 0.58f);
+    const float s  = std::sin (angleRad) * (r * 0.58f);
     const float co = std::cos (angleRad) * (r * 0.58f);
 
-    g.setColour (juce::Colour (0xff2b3642));
+    g.setColour (juce::Colour (0xff152233));
     g.drawLine (c.x - co, c.y - s, c.x + co, c.y + s, 1.6f);
     g.drawLine (c.x + s, c.y - co, c.x - s, c.y + co, 1.6f);
 }
 
-void VulcanEditor::drawJewelLight (juce::Graphics& g, juce::Point<float> c, float r)
+void VulcanEditor::drawSapphireJewel (juce::Graphics& g, juce::Point<float> c, float r)
 {
-    // Outer ambient cyan glow
-    juce::ColourGradient glow (kSkyCyan.withAlpha (0.45f), c.x, c.y,
-                               kSkyCyan.withAlpha (0.0f), c.x + r * 2.4f, c.y, true);
+    juce::ColourGradient glow (kElectricCyan.withAlpha (0.48f), c.x, c.y,
+                               kElectricCyan.withAlpha (0.0f),  c.x + r * 2.6f, c.y, true);
     g.setGradientFill (glow);
-    g.fillEllipse (c.x - r * 2.4f, c.y - r * 2.4f, r * 4.8f, r * 4.8f);
+    g.fillEllipse (c.x - r * 2.6f, c.y - r * 2.6f, r * 5.2f, r * 5.2f);
 
-    // Chrome bezel ring
-    g.setColour (juce::Colour (0xffcbd5e1));
+    g.setColour (kChromeBright);
     g.fillEllipse (c.x - r, c.y - r, r * 2.0f, r * 2.0f);
-    g.setColour (kChassisDark);
+    g.setColour (kOuterBezelDark);
     g.drawEllipse (c.x - r, c.y - r, r * 2.0f, r * 2.0f, 1.2f);
 
-    // Faceted Glowing Blue/Cyan Jewel Lens
     const float lensR = r * 0.74f;
-    juce::ColourGradient jewelGrad (juce::Colour (0xffe0fbfc), c.x - lensR * 0.3f, c.y - lensR * 0.3f,
-                                    juce::Colour (0xff0077b6), c.x + lensR * 0.5f, c.y + lensR * 0.5f, true);
+    juce::ColourGradient jewelGrad (juce::Colour (0xffe6fbff), c.x - lensR * 0.3f, c.y - lensR * 0.3f,
+                                    juce::Colour (0xff0066cc), c.x + lensR * 0.5f, c.y + lensR * 0.5f, true);
     g.setGradientFill (jewelGrad);
     g.fillEllipse (c.x - lensR, c.y - lensR, lensR * 2.0f, lensR * 2.0f);
 
-    // Specular pinpoint sparkle
-    g.setColour (juce::Colours::white.withAlpha (0.9f));
+    g.setColour (juce::Colours::white.withAlpha (0.92f));
     g.fillEllipse (c.x - lensR * 0.45f, c.y - lensR * 0.45f, 2.5f, 2.5f);
 }
 
-void VulcanEditor::drawVulcanEmblem (juce::Graphics& g, juce::Rectangle<float> area)
+void VulcanEditor::drawMetallicEmblem (juce::Graphics& g, juce::Rectangle<float> area)
 {
-    // Minimalist custom geometric V-wave crest in warm cream
-    g.setColour (kSilkCream);
-    g.drawRoundedRectangle (area, 6.0f, 1.6f);
+    // 3D Chrome Automotive Badge
+    juce::ColourGradient badgeGrad (kChromeBright, area.getX(), area.getY(),
+                                    kChromeDark,   area.getX(), area.getBottom(), false);
+    g.setGradientFill (badgeGrad);
+    g.drawRoundedRectangle (area, 6.0f, 1.8f);
 
-    juce::Path bolt;
+    juce::Path vGlyph;
     const float cx = area.getCentreX();
     const float cy = area.getCentreY();
-    bolt.startNewSubPath (cx - 7.0f, cy - 6.0f);
-    bolt.lineTo (cx, cy + 7.0f);
-    bolt.lineTo (cx + 7.0f, cy - 6.0f);
+    vGlyph.startNewSubPath (cx - 7.5f, cy - 6.0f);
+    vGlyph.lineTo (cx, cy + 7.5f);
+    vGlyph.lineTo (cx + 7.5f, cy - 6.0f);
 
-    g.setColour (kSkyCyan);
-    g.strokePath (bolt, juce::PathStrokeType (2.4f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
+    g.setColour (kElectricCyan);
+    g.strokePath (vGlyph, juce::PathStrokeType (2.6f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
 }
 
-void VulcanEditor::drawKnobGraphics (juce::Graphics& g, const KnobControl& kc, const juce::String& formattedText)
+void VulcanEditor::drawKnobLabels (juce::Graphics& g, const KnobControl& kc)
 {
-    const int labelW = kc.bounds.getWidth() + 26;
-    const int labelX = kc.bounds.getCentreX() - labelW / 2;
+    const int labelW = kc.dialBounds.getWidth() + 30;
+    const int labelX = kc.dialBounds.getCentreX() - labelW / 2;
 
-    // Main Silkscreen Parameter Name above knob
-    g.setFont (makeBoutiqueFont (kc.isHero ? 12.0f : 11.0f, true, false));
-    g.setColour (kSilkCream);
-    g.drawText (kc.title, labelX, kc.bounds.getY() - 28, labelW, 15, juce::Justification::centred);
+    g.setFont (makeAutoFont (kc.isHero ? 12.0f : 11.0f, true, false));
+    g.setColour (kChromeBright);
+    g.drawText (kc.title, labelX, kc.dialBounds.getY() - 29, labelW, 15, juce::Justification::centred);
 
-    // Subtle secondary descriptor
-    g.setFont (makeBoutiqueFont (9.0f, true, true));
-    g.setColour (kc.isHero ? kSkyCyan : kSilkMuted.withAlpha (0.8f));
-    g.drawText (kc.subLabel, labelX, kc.bounds.getY() - 14, labelW, 12, juce::Justification::centred);
-
-    // Clean Boutique Value Pill underneath knob
-    const auto pill = kc.readoutBounds.toFloat();
-    g.setColour (kChassisDark.withAlpha (0.62f));
-    g.fillRoundedRectangle (pill, 4.0f);
-
-    g.setColour (kSilkCream.withAlpha (0.28f));
-    g.drawRoundedRectangle (pill, 4.0f, 1.0f);
-
-    g.setFont (makeBoutiqueFont (11.0f, true, true));
-    g.setColour (kc.isHero ? kSkyCyan : kSilkCream);
-    g.drawText (formattedText, kc.readoutBounds, juce::Justification::centred);
+    g.setFont (makeAutoFont (9.0f, true, true));
+    g.setColour (kc.isHero ? kElectricCyan : kChromeMid);
+    g.drawText (kc.subLabel, labelX, kc.dialBounds.getY() - 15, labelW, 12, juce::Justification::centred);
 }
 
-void VulcanEditor::drawStereoMeter (juce::Graphics& g, juce::Rectangle<int> rect)
+void VulcanEditor::drawStereoMeterBridge (juce::Graphics& g, juce::Rectangle<int> rect,
+                                          const juce::String& headerLabel, const MeterBallistics& m)
 {
     const auto fRect = rect.toFloat();
 
-    // Recessed Navy Well matching the control banks
-    g.setColour (kPanelRecess.withAlpha (0.68f));
-    g.fillRoundedRectangle (fRect, 9.0f);
-    g.setColour (kSilkCream.withAlpha (0.35f));
-    g.drawRoundedRectangle (fRect, 9.0f, 1.2f);
+    // Smoked-Glass & Chrome Meter Housing
+    g.setColour (kGlassRecess.withAlpha (0.85f));
+    g.fillRoundedRectangle (fRect, 8.0f);
 
-    // Top Header
-    g.setFont (makeBoutiqueFont (10.0f, true, false));
-    g.setColour (kSilkCream);
-    g.drawText ("OUT", rect.getX(), rect.getY() + 7, rect.getWidth(), 14, juce::Justification::centred);
+    g.setColour (juce::Colours::black.withAlpha (0.65f));
+    g.drawRoundedRectangle (fRect, 8.0f, 1.4f);
+    g.setColour (kChromeBright.withAlpha (0.22f));
+    g.drawRoundedRectangle (fRect.reduced (1.0f), 7.5f, 0.9f);
 
-    const float barW = 10.0f;
-    const float barTop = fRect.getY() + 34.0f;
-    const float barBot = fRect.getBottom() - 36.0f;
+    // Header Title (INPUT / OUTPUT)
+    g.setFont (makeAutoFont (10.5f, true, false));
+    g.setColour (kChromeBright);
+    g.drawText (headerLabel, rect.getX(), rect.getY() + 7, rect.getWidth(), 14, juce::Justification::centred);
+
+    const float barW = 11.0f;
+    const float barTop = fRect.getY() + 36.0f;
+    const float barBot = fRect.getBottom() - 38.0f;
     const float barH = barBot - barTop;
 
     const float leftBarX  = fRect.getX() + 12.0f;
     const float rightBarX = fRect.getRight() - 12.0f - barW;
 
     // Clip LEDs
-    const bool clipL = (peakHoldL >= 0.985f);
-    const bool clipR = (peakHoldR >= 0.985f);
-    g.setColour (clipL ? kCoralAlert : kChassisDark.withAlpha (0.7f));
-    g.fillRoundedRectangle (leftBarX, fRect.getY() + 24.0f, barW, 5.0f, 2.0f);
-    g.setColour (clipR ? kCoralAlert : kChassisDark.withAlpha (0.7f));
-    g.fillRoundedRectangle (rightBarX, fRect.getY() + 24.0f, barW, 5.0f, 2.0f);
+    const bool clipL = (m.holdL >= 0.985f);
+    const bool clipR = (m.holdR >= 0.985f);
+    g.setColour (clipL ? kCrimsonRed : juce::Colour (0xff1a0a10));
+    g.fillRoundedRectangle (leftBarX, fRect.getY() + 25.0f, barW, 5.5f, 2.0f);
+    g.setColour (clipR ? kCrimsonRed : juce::Colour (0xff1a0a10));
+    g.fillRoundedRectangle (rightBarX, fRect.getY() + 25.0f, barW, 5.5f, 2.0f);
 
-    // Bar backgrounds
-    g.setColour (kChassisDark.withAlpha (0.75f));
-    g.fillRoundedRectangle (leftBarX, barTop, barW, barH, 3.0f);
-    g.fillRoundedRectangle (rightBarX, barTop, barW, barH, 3.0f);
+    // Recessed Ladder Wells
+    g.setColour (juce::Colour (0xff03070e));
+    g.fillRoundedRectangle (leftBarX, barTop, barW, barH, 2.5f);
+    g.fillRoundedRectangle (rightBarX, barTop, barW, barH, 2.5f);
+
+    // 32-Segment Precision LED Ladder
+    const int numSegs = 32;
+    const float segStep = barH / static_cast<float> (numSegs);
+    const float segH = segStep - 1.6f;
 
     const float dbFloor = -48.0f;
-    const float dbL = juce::Decibels::gainToDecibels (smoothPeakL, dbFloor);
-    const float dbR = juce::Decibels::gainToDecibels (smoothPeakR, dbFloor);
-    const float holdDbL = juce::Decibels::gainToDecibels (peakHoldL, dbFloor);
-    const float holdDbR = juce::Decibels::gainToDecibels (peakHoldR, dbFloor);
+    const float dbL = juce::Decibels::gainToDecibels (m.smoothL, dbFloor);
+    const float dbR = juce::Decibels::gainToDecibels (m.smoothR, dbFloor);
+    const float holdDbL = juce::Decibels::gainToDecibels (m.holdL, dbFloor);
+    const float holdDbR = juce::Decibels::gainToDecibels (m.holdR, dbFloor);
 
     const float normL = juce::jlimit (0.0f, 1.0f, (dbL - dbFloor) / (-dbFloor));
     const float normR = juce::jlimit (0.0f, 1.0f, (dbR - dbFloor) / (-dbFloor));
-    const float normHoldL = juce::jlimit (0.0f, 1.0f, (holdDbL - dbFloor) / (-dbFloor));
-    const float normHoldR = juce::jlimit (0.0f, 1.0f, (holdDbR - dbFloor) / (-dbFloor));
+    const int holdSegL = static_cast<int> (std::round (juce::jlimit (0.0f, 1.0f, (holdDbL - dbFloor) / (-dbFloor)) * (numSegs - 1)));
+    const int holdSegR = static_cast<int> (std::round (juce::jlimit (0.0f, 1.0f, (holdDbR - dbFloor) / (-dbFloor)) * (numSegs - 1)));
 
-    auto drawChannelFill = [&] (float bx, float normVal, float holdVal)
+    for (int i = 0; i < numSegs; ++i)
     {
-        if (normVal > 0.005f)
-        {
-            const float fillH = barH * normVal;
-            const float fillY = barBot - fillH;
+        const int segFromBot = (numSegs - 1) - i;
+        const float segNorm = static_cast<float> (segFromBot) / static_cast<float> (numSegs - 1);
+        const float yPos = barTop + static_cast<float> (i) * segStep;
 
-            juce::ColourGradient meterGrad (kCoralAlert, bx, barTop,
-                                            kSkyCyan, bx, barBot, false);
-            meterGrad.addColour (0.18, kWarmAmber);
-            meterGrad.addColour (0.45, kSkyCyan);
+        juce::Colour segCol = kElectricCyan;
+        if (segNorm > 0.88f)      segCol = kCrimsonRed;
+        else if (segNorm > 0.72f) segCol = kWarmAmber;
+        else if (segNorm > 0.45f) segCol = kEmeraldSafe;
 
-            g.setGradientFill (meterGrad);
-            g.fillRoundedRectangle (bx + 1.0f, fillY, barW - 2.0f, fillH, 2.0f);
-        }
+        const bool litL = (normL >= segNorm && m.smoothL > 0.0001f) || (segFromBot == holdSegL && m.holdL > 0.001f);
+        const bool litR = (normR >= segNorm && m.smoothR > 0.0001f) || (segFromBot == holdSegR && m.holdR > 0.001f);
 
-        if (holdVal > 0.01f)
-        {
-            const float holdY = barBot - barH * holdVal;
-            g.setColour (kSilkCream);
-            g.fillRect (bx, holdY, barW, 2.0f);
-        }
-    };
+        g.setColour (litL ? segCol : segCol.withAlpha (0.11f));
+        g.fillRect (leftBarX + 1.0f, yPos, barW - 2.0f, segH);
 
-    drawChannelFill (leftBarX, normL, normHoldL);
-    drawChannelFill (rightBarX, normR, normHoldR);
+        g.setColour (litR ? segCol : segCol.withAlpha (0.11f));
+        g.fillRect (rightBarX + 1.0f, yPos, barW - 2.0f, segH);
+    }
 
-    // Center dB Ticks
-    g.setFont (makeBoutiqueFont (8.5f, true, true));
-    g.setColour (kSilkMuted.withAlpha (0.85f));
+    // Center dBFS Scale Markings
+    g.setFont (makeAutoFont (8.5f, true, true));
+    g.setColour (kChromeMid.withAlpha (0.85f));
     const int marks[] = { 0, -6, -12, -24, -36 };
-    for (int m : marks)
+    for (int mark : marks)
     {
-        const float n = (static_cast<float> (m) - dbFloor) / (-dbFloor);
+        const float n = (static_cast<float> (mark) - dbFloor) / (-dbFloor);
         const float yM = barBot - n * barH - 5.0f;
-        g.drawText (juce::String (std::abs (m)),
+        g.drawText (juce::String (std::abs (mark)),
                     static_cast<int> (leftBarX + barW), static_cast<int> (yM),
                     static_cast<int> (rightBarX - (leftBarX + barW)), 10, juce::Justification::centred);
     }
 
-    // L / R labels & Peak numeric readout
-    g.setFont (makeBoutiqueFont (9.5f, true, true));
-    g.setColour (kSilkCream);
-    g.drawText ("L", static_cast<int> (leftBarX), static_cast<int> (barBot + 3.0f), static_cast<int> (barW), 12, juce::Justification::centred);
+    // L / R Channel Labels & Peak Hold Readout
+    g.setFont (makeAutoFont (9.5f, true, true));
+    g.setColour (kChromeBright);
+    g.drawText ("L", static_cast<int> (leftBarX),  static_cast<int> (barBot + 3.0f), static_cast<int> (barW), 12, juce::Justification::centred);
     g.drawText ("R", static_cast<int> (rightBarX), static_cast<int> (barBot + 3.0f), static_cast<int> (barW), 12, juce::Justification::centred);
 
-    const float maxPeak = juce::jmax (peakHoldL, peakHoldR);
+    const float maxPeak = juce::jmax (m.holdL, m.holdR);
     const juce::String peakTxt = (maxPeak <= 0.0005f) ? "-INF"
                                                       : juce::String (juce::Decibels::gainToDecibels (maxPeak), 1);
 
-    g.setFont (makeBoutiqueFont (10.0f, true, true));
-    g.setColour (clipL || clipR ? kCoralAlert : kSkyCyan);
-    g.drawText (peakTxt, rect.getX() + 4, rect.getBottom() - 20, rect.getWidth() - 8, 15, juce::Justification::centred);
+    g.setFont (makeAutoFont (10.5f, true, true));
+    g.setColour (clipL || clipR ? kCrimsonRed : kElectricCyan);
+    g.drawText (peakTxt, rect.getX() + 4, rect.getBottom() - 21, rect.getWidth() - 8, 16, juce::Justification::centred);
 }
 
 void VulcanEditor::drawFaceplate (juce::Graphics& g)
 {
-    if (faceplateCache.isValid())
-        g.drawImageAt (faceplateCache, 0, 0);
+    if (chassisCache.isValid())
+        g.drawImageAt (chassisCache, 0, 0);
 
-    // 4 Interactive Corner Screws
+    // 4 Interactive CNC Corner Screws
     for (size_t i = 0; i < screwCenters.size(); ++i)
-        drawBoutiqueScrew (g, screwCenters[i], 6.5f, screwAngles[i]);
+        drawChromeScrew (g, screwCenters[i], 6.0f, screwAngles[i]);
 
-    // Top-Left Jewel Pilot Lamp + Brand Emblem + Title
-    drawJewelLight (g, { 46.0f, 47.0f }, 7.5f);
-    drawVulcanEmblem (g, { 64.0f, 35.0f, 26.0f, 24.0f });
+    // Header Sapphire Jewel + Metallic Badge + Chrome Title
+    drawSapphireJewel (g, { 42.0f, 43.0f }, 7.5f);
+    drawMetallicEmblem (g, { 60.0f, 30.0f, 28.0f, 26.0f });
 
-    g.setFont (makeBoutiqueFont (23.0f, true, false));
-    g.setColour (kSilkCream);
-    g.drawText ("VULCAN", 98, 29, 120, 26, juce::Justification::centredLeft);
+    g.setFont (makeAutoFont (24.0f, true, false));
+    g.setColour (kChromeBright);
+    g.drawText ("VULCAN", 96, 23, 125, 26, juce::Justification::centredLeft);
 
-    g.setFont (makeBoutiqueFont (9.5f, true, true));
-    g.setColour (kSilkMuted);
-    g.drawText ("BOUTIQUE PHASE & TRANSIENT ENGINE", 99, 51, 235, 13, juce::Justification::centredLeft);
+    g.setFont (makeAutoFont (9.5f, true, true));
+    g.setColour (kElectricCyan.withAlpha (0.88f));
+    g.drawText ("PHASE & TRANSIENT MASTERING ENGINE", 97, 47, 275, 13, juce::Justification::centredLeft);
 
-    // Center Live Haas Telemetry Pill
-    const auto pill = telemetryPillRect.toFloat();
-    g.setColour (kChassisDark.withAlpha (0.65f));
-    g.fillRoundedRectangle (pill, 6.0f);
-    g.setColour (kSilkCream.withAlpha (0.30f));
-    g.drawRoundedRectangle (pill, 6.0f, 1.0f);
+    // Center Smoked-Glass Telemetry Display
+    const auto pill = telemetryRect.toFloat();
+    g.setColour (juce::Colour (0xff040b16).withAlpha (0.88f));
+    g.fillRoundedRectangle (pill, 5.0f);
+    g.setColour (kChromeMid.withAlpha (0.38f));
+    g.drawRoundedRectangle (pill, 5.0f, 1.0f);
 
     const double sr = audioProcessor.getSampleRate() > 0.0 ? audioProcessor.getSampleRate() : 44100.0;
     const float rateMult = static_cast<float> (sr / 44100.0);
     const float widthVal = static_cast<float> (stereoWidthKnob.slider.getValue());
     const int dMid  = static_cast<int> (std::round (23.0f * rateMult * widthVal));
     const int dHigh = static_cast<int> (std::round (41.0f * rateMult * widthVal));
+    const float msHigh = (static_cast<float> (dHigh) / static_cast<float> (sr)) * 1000.0f;
 
-    const juce::String teleStr = "HAAS: " + juce::String (dMid) + " / " + juce::String (dHigh)
-                               + " SMP  |  " + juce::String (sr / 1000.0, 1) + " kHz";
+    const juce::String teleStr = "HAAS: " + juce::String (dMid) + "/" + juce::String (dHigh)
+                               + " SMP (" + juce::String (msHigh, 2) + " ms)  |  "
+                               + juce::String (sr / 1000.0, 1) + " kHz";
 
-    g.setFont (makeBoutiqueFont (11.0f, true, true));
-    g.setColour (kSkyCyan);
-    g.drawText (teleStr, telemetryPillRect, juce::Justification::centred);
+    g.setFont (makeAutoFont (11.0f, true, true));
+    g.setColour (kElectricCyan);
+    g.drawText (teleStr, telemetryRect, juce::Justification::centred);
 }
 
 void VulcanEditor::paint (juce::Graphics& g)
 {
     drawFaceplate (g);
-    drawStereoMeter (g, meterRect);
 
-    // Render all 9 Silkscreen Labels & Digital Value Pills
-    drawKnobGraphics (g, inGainKnob,       formatKnobValue (inGainKnob,       "input_gain"));
-    drawKnobGraphics (g, monoFreqKnob,     formatKnobValue (monoFreqKnob,     "mono_freq"));
-    drawKnobGraphics (g, stereoWidthKnob,  formatKnobValue (stereoWidthKnob,  "haas_amount"));
-    drawKnobGraphics (g, characterKnob,    formatKnobValue (characterKnob,    "amount"));
-    drawKnobGraphics (g, outGainKnob,      formatKnobValue (outGainKnob,      "output_gain"));
+    // Dual Stereo VU/Peak Meter Bridges (Input on Left, Output on Right)
+    drawStereoMeterBridge (g, inMeterRect,  "INPUT",  inMeter);
+    drawStereoMeterBridge (g, outMeterRect, "OUTPUT", outMeter);
 
-    drawKnobGraphics (g, eqLowKnob,        formatKnobValue (eqLowKnob,        "eq_low"));
-    drawKnobGraphics (g, eqMidKnob,        formatKnobValue (eqMidKnob,        "eq_mid"));
-    drawKnobGraphics (g, eqHighKnob,       formatKnobValue (eqHighKnob,       "eq_high"));
-    drawKnobGraphics (g, limiterDriveKnob, formatKnobValue (limiterDriveKnob, "limiter_drive"));
+    // Parameter Titles above all 9 3D Knobs
+    drawKnobLabels (g, inGainKnob);
+    drawKnobLabels (g, monoFreqKnob);
+    drawKnobLabels (g, stereoWidthKnob);
+    drawKnobLabels (g, characterKnob);
+    drawKnobLabels (g, outGainKnob);
+
+    drawKnobLabels (g, eqLowKnob);
+    drawKnobLabels (g, eqMidKnob);
+    drawKnobLabels (g, eqHighKnob);
+    drawKnobLabels (g, limiterDriveKnob);
 }
