@@ -46,6 +46,7 @@ VulcanAutomotiveLookAndFeel::VulcanAutomotiveLookAndFeel()
     setColour (juce::PopupMenu::textColourId, kChromeBright);
     setColour (juce::PopupMenu::highlightedBackgroundColourId, juce::Colour (0xff1c5cb3));
     setColour (juce::PopupMenu::highlightedTextColourId, kElectricCyan);
+    setColour (juce::ComboBox::textColourId, juce::Colour (0xffffd670));
 
     setColour (juce::TextEditor::backgroundColourId, juce::Colour (0xff040c18));
     setColour (juce::TextEditor::textColourId, kElectricCyan);
@@ -334,12 +335,15 @@ VulcanEditor::VulcanEditor (VulcanProcessor& p)
     for (int i = 0; i < audioProcessor.getNumPrograms(); ++i)
         presetSelector.addItem (audioProcessor.getProgramName (i), i + 1);
 
-    presetSelector.setSelectedId (audioProcessor.getCurrentProgram() + 1, juce::dontSendNotification);
+    syncPresetDisplay();
     presetSelector.onChange = [this]
     {
         const int idx = presetSelector.getSelectedId() - 1;
         if (idx >= 0)
+        {
             audioProcessor.setCurrentProgram (idx);
+            syncPresetDisplay();
+        }
     };
 
     setSize (940, 470);
@@ -415,7 +419,11 @@ void VulcanEditor::setupKnob (KnobControl& kc, const juce::String& paramID,
         }
     };
 
-    kc.slider.onValueChange = [this] { repaint (telemetryRect); };
+    kc.slider.onValueChange = [this]
+    {
+        syncPresetDisplay();
+        repaint (telemetryRect);
+    };
 
     addAndMakeVisible (kc.slider);
     attachments.push_back (std::make_unique<juce::AudioProcessorValueTreeState::SliderAttachment> (
@@ -436,11 +444,31 @@ void VulcanEditor::mouseDown (const juce::MouseEvent& event)
     }
 }
 
+void VulcanEditor::syncPresetDisplay()
+{
+    const int progIdx = audioProcessor.getCurrentProgram();
+    const juce::String progName = audioProcessor.getProgramName (progIdx);
+
+    if (audioProcessor.isPresetModified())
+    {
+        const juce::String dirtyName = progName + " *";
+        if (presetSelector.getSelectedId() != 0 || presetSelector.getTextWhenNothingSelected() != dirtyName)
+        {
+            presetSelector.setTextWhenNothingSelected (dirtyName);
+            presetSelector.setSelectedId (0, juce::dontSendNotification);
+        }
+    }
+    else
+    {
+        const int expectedId = progIdx + 1;
+        if (presetSelector.getSelectedId() != expectedId)
+            presetSelector.setSelectedId (expectedId, juce::dontSendNotification);
+    }
+}
+
 void VulcanEditor::timerCallback()
 {
-    const int expectedId = audioProcessor.getCurrentProgram() + 1;
-    if (presetSelector.getSelectedId() != expectedId)
-        presetSelector.setSelectedId (expectedId, juce::dontSendNotification);
+    syncPresetDisplay();
 
     bool screwMoving = false;
     for (size_t i = 0; i < screwCenters.size(); ++i)
