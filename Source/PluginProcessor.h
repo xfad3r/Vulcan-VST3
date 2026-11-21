@@ -40,10 +40,12 @@ public:
 
     juce::AudioProcessorValueTreeState& getAPVTS() { return apvts; }
 
-    // Public state for Editor attachments & lock-free metering
+    // Public state for Editor attachments & lock-free Input/Output metering
     juce::AudioProcessorValueTreeState apvts;
-    std::atomic<float> peakL { 0.0f };
-    std::atomic<float> peakR { 0.0f };
+    std::atomic<float> inPeakL { 0.0f };
+    std::atomic<float> inPeakR { 0.0f };
+    std::atomic<float> peakL   { 0.0f };
+    std::atomic<float> peakR   { 0.0f };
 
 private:
     juce::AudioProcessorValueTreeState::ParameterLayout createParameterLayout();
