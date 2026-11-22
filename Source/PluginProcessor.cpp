@@ -44,9 +44,10 @@ VulcanProcessor::~VulcanProcessor()
         apvts.removeParameterListener (id, this);
 }
 
-void VulcanProcessor::parameterChanged (const juce::String&, float)
+void VulcanProcessor::parameterChanged (const juce::String& parameterID, float)
 {
-    if (! isApplyingPreset)
+    // Input & Output trims are global gain-staging controls; ignore them for preset dirty tracking
+    if (! isApplyingPreset && parameterID != "input_gain" && parameterID != "output_gain")
         presetModified.store (true);
 }
 
@@ -82,7 +83,7 @@ void VulcanProcessor::setCurrentProgram (int index)
             param->setValueNotifyingHost(param->convertTo0to1(val));
     };
 
-    setParam("input_gain", p.inGain);
+    // Preserve user's Input Trim & Output Trim across preset changes
     setParam("eq_low", p.eqLow);
     setParam("eq_mid", p.eqMid);
     setParam("eq_high", p.eqHigh);
@@ -90,7 +91,6 @@ void VulcanProcessor::setCurrentProgram (int index)
     setParam("haas_amount", p.haasWidth);
     setParam("amount", p.amount);
     setParam("limiter_drive", p.limDrive);
-    setParam("output_gain", p.outGain);
 
     isApplyingPreset = false;
     presetModified.store(false);

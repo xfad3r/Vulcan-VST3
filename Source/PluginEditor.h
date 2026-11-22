@@ -122,8 +122,8 @@ private:
     VulcanProcessor& audioProcessor;
     VulcanAutomotiveLookAndFeel automotiveLnf;
 
-    // Embedded Quick-Manual HUD Tooltip Engine (350ms hover delay)
-    juce::TooltipWindow tooltipWindow { this, 350 };
+    // Embedded Quick-Manual HUD Tooltip Engine (2.5s hover delay)
+    juce::TooltipWindow tooltipWindow { this, 2500 };
 
     // Cached automotive metallic clearcoat texture
     juce::Image chassisCache;

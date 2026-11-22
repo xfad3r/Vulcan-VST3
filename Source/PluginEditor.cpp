@@ -396,7 +396,7 @@ VulcanEditor::VulcanEditor (VulcanProcessor& p)
 
     // Top Bank: 5 Core Controls (with Keyboard Entry + Quick-Manual Tooltips)
     setupKnob (inGainKnob, "input_gain", "INPUT", "TRIM",
-               "INPUT TRIM (-24 to +24 dB)\nAdjusts incoming gain before Pre-EQ and saturation. Aim for peaks around -6 dBFS on the Input Meter for optimal headroom.\n[Click readout to type | Double-click knob to reset]",
+               "INPUT TRIM (-24 to +24 dB)\nAdjusts incoming gain before Pre-EQ and saturation. Aim for peaks around -6 dBFS on the Input Meter. Locked across preset changes.\n[Click readout to type | Double-click knob to reset]",
                kWarmAmber, ValueDisplayMode::Decibels, true, false, 0.0);
 
     setupKnob (monoFreqKnob, "mono_freq", "MONO LOCK", "X-OVER",
@@ -412,7 +412,7 @@ VulcanEditor::VulcanEditor (VulcanProcessor& p)
                kWarmAmber, ValueDisplayMode::Percent100From2, false, false, 0.0);
 
     setupKnob (outGainKnob, "output_gain", "OUTPUT", "LEVEL",
-               "OUTPUT TRIM (-24 to +24 dB)\nFinal post-limiter gain stage prior to 16-bit TPDF dithering. Use to level-match processed vs. bypassed audio or set streaming headroom.",
+               "OUTPUT TRIM (-24 to +24 dB)\nFinal post-limiter gain stage prior to 16-bit TPDF dithering. Use to level-match processed vs. bypassed audio. Locked across preset changes.",
                kChromeBright, ValueDisplayMode::Decibels, true, false, 0.0);
 
     // Bottom Bank: 4 Pre-EQ & Limiter Controls
@@ -434,7 +434,7 @@ VulcanEditor::VulcanEditor (VulcanProcessor& p)
 
     // Preset Selector
     addAndMakeVisible (presetSelector);
-    presetSelector.setTooltip ("PRESET BANK\nSelect a factory mastering curve. An asterisk (*) indicates manual edits - re-select the same preset anytime to restore its original settings.");
+    presetSelector.setTooltip ("PRESET BANK\nSelect a factory mastering curve (preserves Input/Output trims). An asterisk (*) indicates manual edits - re-select the same preset anytime to restore its settings.");
     for (int i = 0; i < audioProcessor.getNumPrograms(); ++i)
         presetSelector.addItem (audioProcessor.getProgramName (i), i + 1);
 
