@@ -29,20 +29,24 @@
   }
 
   html, body {
-    width: 940px;
-    height: 470px;
+    position: relative;
+    width: 100vw;
+    height: 100vh;
     overflow: hidden;
     background: var(--bg-obsidian);
     font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
     color: var(--chrome-bright);
   }
 
-  /* Automotive Sapphire Metallic Chassis */
+  /* Automotive Sapphire Metallic Chassis (Auto-scaled to fit any DPI / window size) */
   .chassis {
-    position: relative;
+    position: absolute;
+    top: 50%;
+    left: 50%;
     width: 928px;
     height: 458px;
-    margin: 6px;
+    transform-origin: center center;
+    transform: translate(-50%, -50%) scale(1);
     border-radius: 12px;
     background:
       radial-gradient(ellipse 68% 55% at 42% 32%, rgba(76, 175, 255, 0.28) 0%, rgba(16, 66, 132, 0.12) 48%, transparent 75%),
@@ -91,7 +95,23 @@
   .screw.tl { top: 6px; left: 6px; }
   .screw.tr { top: 6px; right: 6px; }
   .screw.bl { bottom: 6px; left: 6px; }
-  .screw.br { bottom: 6px; right: 6px; }
+  .screw.br { bottom: 6px; right: 20px; }
+
+  /* Bottom-Right Interactive Resize Grip */
+  .resize-grip {
+    position: absolute;
+    right: 3px;
+    bottom: 3px;
+    width: 16px;
+    height: 16px;
+    cursor: nwse-resize;
+    z-index: 30;
+    opacity: 0.72;
+    transition: opacity 0.15s ease;
+  }
+  .resize-grip:hover {
+    opacity: 1;
+  }
 
   /* Header Bar */
   .header {
@@ -102,12 +122,13 @@
     align-items: center;
     justify-content: space-between;
     padding: 0 6px;
+    gap: 8px;
   }
 
   .brand-group {
     display: flex;
     align-items: center;
-    gap: 11px;
+    gap: 10px;
   }
 
   .jewel {
@@ -146,9 +167,9 @@
 
   .title-stack .subtitle {
     font-family: "Consolas", "JetBrains Mono", monospace;
-    font-size: 9.5px;
+    font-size: 9px;
     font-weight: 700;
-    letter-spacing: 1.1px;
+    letter-spacing: 1px;
     color: var(--cyan);
     margin-top: 2px;
     opacity: 0.92;
@@ -157,7 +178,7 @@
   /* Live Haas Telemetry OLED */
   .telemetry-pill {
     height: 30px;
-    padding: 0 14px;
+    padding: 0 12px;
     border-radius: 6px;
     background: rgba(3, 10, 22, 0.9);
     border: 1px solid rgba(143, 168, 196, 0.36);
@@ -168,14 +189,73 @@
     font-size: 11px;
     font-weight: 700;
     color: var(--cyan);
-    letter-spacing: 0.4px;
+    letter-spacing: 0.3px;
     white-space: nowrap;
+  }
+
+  .header-right {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+  }
+
+  /* UI Zoom / Window Size Selector */
+  .zoom-wrapper {
+    position: relative;
+    width: 66px;
+    height: 30px;
+  }
+
+  .zoom-btn {
+    width: 100%;
+    height: 100%;
+    border-radius: 6px;
+    background: linear-gradient(180deg, #071326 0%, #030914 100%);
+    border: 1px solid rgba(175, 200, 228, 0.45);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.15), 0 2px 5px rgba(0,0,0,0.65);
+    color: var(--cyan);
+    font-family: "Consolas", "JetBrains Mono", monospace;
+    font-size: 11px;
+    font-weight: 700;
+    padding: 0 18px 0 8px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: pointer;
+  }
+
+  .zoom-btn .chevron {
+    position: absolute;
+    right: 6px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--chrome-mid);
+    font-size: 9px;
+    pointer-events: none;
+  }
+
+  .zoom-menu {
+    position: absolute;
+    top: 34px;
+    right: 0;
+    width: 132px;
+    background: rgba(6, 18, 38, 0.98);
+    border: 1px solid rgba(76, 232, 255, 0.55);
+    border-radius: 7px;
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.9);
+    padding: 4px;
+    display: none;
+    z-index: 110;
+  }
+
+  .zoom-menu.open {
+    display: block;
   }
 
   /* Custom Preset Selector (Supports re-selecting dirty preset) */
   .preset-wrapper {
     position: relative;
-    width: 204px;
+    width: 194px;
     height: 30px;
   }
 
@@ -189,7 +269,7 @@
     color: var(--chrome-bright);
     font-size: 12px;
     font-weight: 700;
-    padding: 0 28px 0 10px;
+    padding: 0 26px 0 10px;
     display: flex;
     align-items: center;
     justify-content: space-between;
@@ -207,7 +287,7 @@
 
   .preset-btn .chevron {
     position: absolute;
-    right: 10px;
+    right: 9px;
     top: 50%;
     transform: translateY(-50%);
     color: var(--cyan);
@@ -219,7 +299,7 @@
     position: absolute;
     top: 34px;
     right: 0;
-    width: 216px;
+    width: 214px;
     background: rgba(6, 18, 38, 0.98);
     border: 1px solid rgba(76, 232, 255, 0.55);
     border-radius: 7px;
@@ -530,6 +610,17 @@
     <div class="screw bl" data-tip-title="CNC CHASSIS FASTENER" data-tip-body="Click to spin the billet stainless screw."></div>
     <div class="screw br" data-tip-title="CNC CHASSIS FASTENER" data-tip-body="Click to spin the billet stainless screw."></div>
 
+    <!-- Interactive Bottom-Right Window Resize Handle -->
+    <div class="resize-grip" id="resizeGrip"
+         data-tip-title="RESIZE WINDOW"
+         data-tip-body="Drag corner to resize the plugin window proportionally.">
+      <svg width="16" height="16" viewBox="0 0 16 16">
+        <line x1="5" y1="14" x2="14" y2="5" stroke="#8fa8c4" stroke-width="1.5" stroke-linecap="round"/>
+        <line x1="9" y1="14" x2="14" y2="9" stroke="#4ce8ff" stroke-width="1.5" stroke-linecap="round"/>
+        <line x1="13" y1="14" x2="14" y2="13" stroke="#eaf2fb" stroke-width="1.5" stroke-linecap="round"/>
+      </svg>
+    </div>
+
     <!-- Header -->
     <div class="header">
       <div class="brand-group">
@@ -551,14 +642,28 @@
         HAAS: 11/19 SMP (0.43 ms) &nbsp;|&nbsp; 44.1 kHz
       </div>
 
-      <div class="preset-wrapper" id="presetWrapper"
-           data-tip-title="PRESET BANK"
-           data-tip-body="Select a factory mastering curve (preserves Input/Output trims). An asterisk (*) indicates manual edits - re-select the same preset anytime to restore its settings.">
-        <button class="preset-btn" id="presetBtn" type="button">
-          <span id="presetLabel">01. Default / Clean</span>
-          <span class="chevron">&#9662;</span>
-        </button>
-        <div class="preset-menu" id="presetMenu"></div>
+      <div class="header-right">
+        <!-- Window Size / Zoom Selector -->
+        <div class="zoom-wrapper" id="zoomWrapper"
+             data-tip-title="WINDOW SCALE"
+             data-tip-body="Resize the plugin window (75% to 150%) or drag the bottom-right corner grip.">
+          <button class="zoom-btn" id="zoomBtn" type="button">
+            <span id="zoomLabel">100%</span>
+            <span class="chevron">&#9662;</span>
+          </button>
+          <div class="zoom-menu" id="zoomMenu"></div>
+        </div>
+
+        <!-- Preset Selector -->
+        <div class="preset-wrapper" id="presetWrapper"
+             data-tip-title="PRESET BANK"
+             data-tip-body="Select a factory mastering curve (preserves Input/Output trims). An asterisk (*) indicates manual edits - re-select the same preset anytime to restore its settings.">
+          <button class="preset-btn" id="presetBtn" type="button">
+            <span id="presetLabel">01. Default / Clean</span>
+            <span class="chevron">&#9662;</span>
+          </button>
+          <div class="preset-menu" id="presetMenu"></div>
+        </div>
       </div>
     </div>
 
@@ -598,6 +703,24 @@
 
 <script>
 (() => {
+  // ===========================================================================
+  // 0. Responsive Viewport Auto-Scaling (Fixes DPI Clipping + Enables Resizing)
+  // ===========================================================================
+  const BASE_W = 940;
+  const BASE_H = 470;
+  const chassisEl = document.getElementById("chassis");
+  let currentUiScale = 1.0;
+
+  function applyResponsiveScale() {
+    const vw = window.innerWidth || BASE_W;
+    const vh = window.innerHeight || BASE_H;
+    currentUiScale = Math.max(0.45, Math.min(vw / BASE_W, vh / BASE_H));
+    chassisEl.style.transform = `translate(-50%, -50%) scale(${currentUiScale.toFixed(4)})`;
+  }
+
+  window.addEventListener("resize", applyResponsiveScale);
+  applyResponsiveScale();
+
   // ===========================================================================
   // 1. JUCE 8 Native WebSliderRelay Bridge
   // ===========================================================================
@@ -881,7 +1004,7 @@
     const client = new JuceSliderClient(spec.id, defNorm, renderKnobVisuals);
     renderKnobVisuals(defNorm);
 
-    // Mouse Drag Interaction (Shift = 10x Fine Precision)
+    // Mouse Drag Interaction (Scale-compensated; Shift = 10x Fine Precision)
     stage.addEventListener("mousedown", (e) => {
       if (e.button !== 0) return;
       e.preventDefault();
@@ -890,7 +1013,7 @@
       let lastY = e.clientY;
 
       const onMove = (mv) => {
-        const dy = lastY - mv.clientY;
+        const dy = (lastY - mv.clientY) / currentUiScale;
         lastY = mv.clientY;
         const speed = mv.shiftKey ? 0.0008 : 0.0045;
         client.setNormalisedValue(client.norm + dy * speed);
@@ -988,7 +1111,88 @@
   });
 
   // ===========================================================================
-  // 4. Preset Selector (Supports Re-selecting Modified Preset to Reset)
+  // 4. Window Size / Zoom Menu + Corner Drag Resize
+  // ===========================================================================
+  const ZOOM_LEVELS = [
+    { label: "75%",  scale: 0.75 },
+    { label: "85%",  scale: 0.85 },
+    { label: "100%", scale: 1.00 },
+    { label: "120%", scale: 1.20 },
+    { label: "140%", scale: 1.40 }
+  ];
+  let selectedZoomLabel = "100%";
+
+  const zoomBtn = document.getElementById("zoomBtn");
+  const zoomLabel = document.getElementById("zoomLabel");
+  const zoomMenu = document.getElementById("zoomMenu");
+
+  function requestHostResize(targetW, targetH, labelOverride) {
+    const w = Math.max(640, Math.min(1880, Math.round(targetW)));
+    const h = Math.round(w * 0.5);
+    if (labelOverride) {
+      selectedZoomLabel = labelOverride;
+      zoomLabel.textContent = labelOverride;
+    } else {
+      selectedZoomLabel = `${Math.round((w / BASE_W) * 100)}%`;
+      zoomLabel.textContent = selectedZoomLabel;
+    }
+    renderZoomMenu();
+    if (backend) {
+      backend.emitEvent("setEditorSize", { width: w, height: h });
+    }
+  }
+
+  function renderZoomMenu() {
+    zoomMenu.innerHTML = "";
+    ZOOM_LEVELS.forEach((z) => {
+      const item = document.createElement("div");
+      item.className = "preset-item" + (z.label === selectedZoomLabel ? " active" : "");
+      item.textContent = `${z.label} (${Math.round(BASE_W * z.scale)}×${Math.round(BASE_H * z.scale)})`;
+      item.addEventListener("click", (e) => {
+        e.stopPropagation();
+        zoomMenu.classList.remove("open");
+        requestHostResize(BASE_W * z.scale, BASE_H * z.scale, z.label);
+      });
+      zoomMenu.appendChild(item);
+    });
+  }
+
+  zoomBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    hideTooltip();
+    presetMenu.classList.remove("open");
+    zoomMenu.classList.toggle("open");
+  });
+  renderZoomMenu();
+
+  // Bottom-Right Corner Drag Resize Grip
+  const resizeGrip = document.getElementById("resizeGrip");
+  resizeGrip.addEventListener("mousedown", (e) => {
+    if (e.button !== 0) return;
+    e.preventDefault();
+    e.stopPropagation();
+    hideTooltip();
+
+    const startX = e.screenX;
+    const startW = window.innerWidth || BASE_W;
+
+    const onMove = (mv) => {
+      const dx = mv.screenX - startX;
+      const newW = Math.max(640, Math.min(1880, startW + dx));
+      requestHostResize(newW, newW * 0.5, null);
+    };
+
+    const onUp = () => {
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  });
+
+  // ===========================================================================
+  // 5. Preset Selector (Supports Re-selecting Modified Preset to Reset)
   // ===========================================================================
   let presetNames = [
     "01. Default / Clean",
@@ -1032,14 +1236,18 @@
   presetBtn.addEventListener("click", (e) => {
     e.stopPropagation();
     hideTooltip();
+    zoomMenu.classList.remove("open");
     presetMenu.classList.toggle("open");
   });
 
-  window.addEventListener("click", () => presetMenu.classList.remove("open"));
+  window.addEventListener("click", () => {
+    presetMenu.classList.remove("open");
+    zoomMenu.classList.remove("open");
+  });
   renderPresetUI();
 
   // ===========================================================================
-  // 5. Dual 32-Segment Stereo VU/Peak Meter Bridges (60 FPS Canvas)
+  // 6. Dual 32-Segment Stereo VU/Peak Meter Bridges (60 FPS Canvas)
   // ===========================================================================
   function createMeterRenderer(canvasId, peakTextId) {
     const canvas = document.getElementById(canvasId);
@@ -1154,7 +1362,7 @@
   requestAnimationFrame(animationLoop);
 
   // ===========================================================================
-  // 6. Interactive Corner Screws Easter Egg
+  // 7. Interactive Corner Screws Easter Egg
   // ===========================================================================
   document.querySelectorAll(".screw").forEach((screw) => {
     let angle = 25;
@@ -1166,7 +1374,7 @@
   });
 
   // ===========================================================================
-  // 7. 2.5-Second Hover Quick-Manual HUD Tooltip System
+  // 8. 2.5-Second Hover Quick-Manual HUD Tooltip System
   // ===========================================================================
   const hudTip = document.getElementById("hudTooltip");
   const hudTipTitle = document.getElementById("hudTipTitle");
@@ -1194,10 +1402,12 @@
           hudTip.classList.add("visible");
 
           const rect = hudTip.getBoundingClientRect();
+          const maxW = (window.innerWidth || BASE_W) - 10;
+          const maxH = (window.innerHeight || BASE_H) - 10;
           let left = mx + 14;
           let top = my + 16;
-          if (left + rect.width > 930) left = mx - rect.width - 12;
-          if (top + rect.height > 460) top = my - rect.height - 12;
+          if (left + rect.width > maxW) left = mx - rect.width - 12;
+          if (top + rect.height > maxH) top = my - rect.height - 12;
           hudTip.style.left = `${Math.max(10, left)}px`;
           hudTip.style.top = `${Math.max(10, top)}px`;
         }, 2500);
@@ -1208,7 +1418,7 @@
   document.addEventListener("mouseleave", hideTooltip);
 
   // ===========================================================================
-  // 8. C++ Telemetry & Full Sync Event Listeners
+  // 9. C++ Telemetry & Full Sync Event Listeners
   // ===========================================================================
   if (backend) {
     backend.addEventListener("telemetryFrame", (data) => {
@@ -1239,8 +1449,14 @@
       isDirty = Boolean(data.presetModified);
       if (data.sampleRate)
         currentSampleRate = data.sampleRate;
+      if (typeof data.editorWidth === "number" && data.editorWidth > 0) {
+        selectedZoomLabel = `${Math.round((data.editorWidth / BASE_W) * 100)}%`;
+        zoomLabel.textContent = selectedZoomLabel;
+        renderZoomMenu();
+      }
       renderPresetUI();
       updateTelemetryPill();
+      applyResponsiveScale();
     });
 
     backend.emitEvent("uiReady", {});
