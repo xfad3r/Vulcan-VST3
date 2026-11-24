@@ -25,6 +25,9 @@ private:
 
     VulcanProcessor& audioProcessor;
 
+    int lastSyncedPreset = -1;
+    bool lastSyncedModified = false;
+
     // =========================================================================
     // STRICT JUCE 8 LIFECYCLE ORDER (DO NOT REORDER THESE 3 BLOCKS):
     // 1. Relays (constructed first, destroyed last)
