@@ -2,48 +2,13 @@
 
 #include <JuceHeader.h>
 #include "PluginProcessor.h"
-#include <array>
+#include <optional>
 #include <vector>
-#include <memory>
 
 //==============================================================================
-// Automotive Metallic Blue & 3D CNC Machined LookAndFeel
-//==============================================================================
-class VulcanAutomotiveLookAndFeel : public juce::LookAndFeel_V4
-{
-public:
-    VulcanAutomotiveLookAndFeel();
-    ~VulcanAutomotiveLookAndFeel() override = default;
-
-    void drawRotarySlider (juce::Graphics& g, int x, int y, int width, int height,
-                           float sliderPosProportional, float rotaryStartAngle,
-                           float rotaryEndAngle, juce::Slider& slider) override;
-
-    juce::Label* createSliderTextBox (juce::Slider& slider) override;
-
-    void drawLabel (juce::Graphics& g, juce::Label& label) override;
-
-    void drawComboBox (juce::Graphics& g, int width, int height, bool isButtonDown,
-                       int buttonX, int buttonY, int buttonW, int buttonH,
-                       juce::ComboBox& box) override;
-
-    void positionComboBoxText (juce::ComboBox& box, juce::Label& label) override;
-
-    juce::Font getComboBoxFont (juce::ComboBox& box) override;
-    juce::Font getPopupMenuFont() override;
-
-    juce::Rectangle<int> getTooltipBounds (const juce::String& tipText,
-                                           juce::Point<int> screenPos,
-                                           juce::Rectangle<int> parentArea) override;
-
-    void drawTooltip (juce::Graphics& g, const juce::String& text, int width, int height) override;
-};
-
-//==============================================================================
-// Vulcan Editor (Automotive Metallic Sapphire Blue + 3D Billet Hardware Edition)
+// VulcanEditor — JUCE 8 Hardware-Accelerated WebView2 / WKWebView Edition
 //==============================================================================
 class VulcanEditor : public juce::AudioProcessorEditor,
-                     public juce::TooltipClient,
                      private juce::Timer
 {
 public:
@@ -52,114 +17,45 @@ public:
 
     void paint (juce::Graphics&) override;
     void resized() override;
-    void mouseDown (const juce::MouseEvent& event) override;
-
-    // Provides quick-manual hover descriptions for meters, telemetry & hardware accents
-    juce::String getTooltip() override;
 
 private:
     void timerCallback() override;
-    void syncPresetDisplay();
-    void rebuildMetallicChassisCache();
-
-    enum class ValueDisplayMode
-    {
-        Decibels,
-        FrequencyHz,
-        Percent100From1,
-        Percent100From2
-    };
-
-    struct KnobControl
-    {
-        juce::Slider slider;
-        juce::String title;
-        juce::String subLabel;
-        juce::Colour arcColour;
-        ValueDisplayMode displayMode = ValueDisplayMode::Decibels;
-        bool isBipolar = false;
-        bool isHero = false;
-        juce::Rectangle<int> sliderBounds;
-        juce::Rectangle<int> dialBounds;
-    };
-
-    struct MeterBallistics
-    {
-        float smoothL = 0.0f;
-        float smoothR = 0.0f;
-        float holdL   = 0.0f;
-        float holdR   = 0.0f;
-        int   timerL  = 0;
-        int   timerR  = 0;
-
-        void update (float rawL, float rawR)
-        {
-            smoothL = (rawL > smoothL) ? rawL : (smoothL * 0.85f);
-            smoothR = (rawR > smoothR) ? rawR : (smoothR * 0.85f);
-
-            if (rawL >= holdL) { holdL = rawL; timerL = 42; }
-            else if (--timerL <= 0) { holdL *= 0.94f; }
-
-            if (rawR >= holdR) { holdR = rawR; timerR = 42; }
-            else if (--timerR <= 0) { holdR *= 0.94f; }
-        }
-    };
-
-    void setupKnob (KnobControl& kc, const juce::String& paramID,
-                    const juce::String& titleText, const juce::String& subText,
-                    const juce::String& manualTooltip,
-                    juce::Colour arcCol, ValueDisplayMode mode,
-                    bool bipolar, bool hero, double defaultVal);
-
-    void drawFaceplate (juce::Graphics& g);
-    void drawChromeScrew (juce::Graphics& g, juce::Point<float> center, float radius, float angleRad);
-    void drawSapphireJewel (juce::Graphics& g, juce::Point<float> center, float radius);
-    void drawMetallicEmblem (juce::Graphics& g, juce::Rectangle<float> area);
-    void drawKnobLabels (juce::Graphics& g, const KnobControl& kc);
-    void drawStereoMeterBridge (juce::Graphics& g, juce::Rectangle<int> rect,
-                                const juce::String& headerLabel, const MeterBallistics& m);
+    void pushFullSyncToWeb();
+    std::optional<juce::WebBrowserComponent::Resource> handleResourceRequest (const juce::String& url);
 
     VulcanProcessor& audioProcessor;
-    VulcanAutomotiveLookAndFeel automotiveLnf;
 
-    // Embedded Quick-Manual HUD Tooltip Engine (2.5s hover delay)
-    juce::TooltipWindow tooltipWindow { this, 2500 };
+    // =========================================================================
+    // STRICT JUCE 8 LIFECYCLE ORDER (DO NOT REORDER THESE 3 BLOCKS):
+    // 1. Relays (constructed first, destroyed last)
+    // 2. WebBrowserComponent (constructed after relays, destroyed before relays)
+    // 3. ParameterAttachments (constructed last, destroyed first)
+    // =========================================================================
 
-    // Cached automotive metallic clearcoat texture
-    juce::Image chassisCache;
+    // 1. Parameter Relays
+    juce::WebSliderRelay inGainRelay       { "input_gain" };
+    juce::WebSliderRelay eqLowRelay        { "eq_low" };
+    juce::WebSliderRelay eqMidRelay        { "eq_mid" };
+    juce::WebSliderRelay eqHighRelay       { "eq_high" };
+    juce::WebSliderRelay monoFreqRelay     { "mono_freq" };
+    juce::WebSliderRelay stereoWidthRelay  { "haas_amount" };
+    juce::WebSliderRelay characterRelay    { "amount" };
+    juce::WebSliderRelay limiterDriveRelay { "limiter_drive" };
+    juce::WebSliderRelay outGainRelay      { "output_gain" };
 
-    // 9 Mastering Controls with full Keyboard Editing & Hover Manual
-    KnobControl inGainKnob;
-    KnobControl monoFreqKnob;
-    KnobControl stereoWidthKnob;
-    KnobControl characterKnob;
-    KnobControl outGainKnob;
+    // 2. Embedded Browser Instance
+    juce::WebBrowserComponent webView;
 
-    KnobControl eqLowKnob;
-    KnobControl eqMidKnob;
-    KnobControl eqHighKnob;
-    KnobControl limiterDriveKnob;
-
-    std::vector< std::unique_ptr<juce::AudioProcessorValueTreeState::SliderAttachment> > attachments;
-    juce::ComboBox presetSelector;
-
-    // Interactive CNC Corner Screws
-    std::array<juce::Point<float>, 4> screwCenters {};
-    std::array<float, 4> screwAngles { { 0.40f, 1.25f, 2.10f, 0.75f } };
-    std::array<float, 4> screwVelocities { { 0.0f, 0.0f, 0.0f, 0.0f } };
-
-    // Dual Stereo Meter Ballistics (Input + Output)
-    MeterBallistics inMeter;
-    MeterBallistics outMeter;
-
-    // Layout Regions
-    juce::Rectangle<int> outerPlateRect;
-    juce::Rectangle<int> headerRect;
-    juce::Rectangle<int> telemetryRect;
-    juce::Rectangle<int> inMeterRect;
-    juce::Rectangle<int> outMeterRect;
-    juce::Rectangle<int> topBankRect;
-    juce::Rectangle<int> botBankRect;
+    // 3. APVTS <-> WebSliderRelay Attachments
+    juce::WebSliderParameterAttachment inGainAttachment;
+    juce::WebSliderParameterAttachment eqLowAttachment;
+    juce::WebSliderParameterAttachment eqMidAttachment;
+    juce::WebSliderParameterAttachment eqHighAttachment;
+    juce::WebSliderParameterAttachment monoFreqAttachment;
+    juce::WebSliderParameterAttachment stereoWidthAttachment;
+    juce::WebSliderParameterAttachment characterAttachment;
+    juce::WebSliderParameterAttachment limiterDriveAttachment;
+    juce::WebSliderParameterAttachment outGainAttachment;
 
     JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (VulcanEditor)
 };
