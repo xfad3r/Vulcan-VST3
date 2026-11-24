@@ -1,0 +1,1251 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>VULCAN // Phase & Transient Mastering Engine</title>
+<style>
+  :root {
+    --bg-obsidian: #040911;
+    --paint-deep: #071933;
+    --paint-mid: #0e3b76;
+    --paint-bright: #216fd1;
+    --glass-bg: rgba(5, 16, 33, 0.78);
+    --chrome-bright: #eaf2fb;
+    --chrome-mid: #8fa8c4;
+    --chrome-dark: #28384d;
+    --cyan: #4ce8ff;
+    --amber: #ffbe3d;
+    --crimson: #ff4d5e;
+    --emerald: #2ce68a;
+  }
+
+  * {
+    box-sizing: border-box;
+    user-select: none;
+    -webkit-user-select: none;
+    margin: 0;
+    padding: 0;
+  }
+
+  html, body {
+    width: 940px;
+    height: 470px;
+    overflow: hidden;
+    background: var(--bg-obsidian);
+    font-family: "Segoe UI", -apple-system, BlinkMacSystemFont, Roboto, sans-serif;
+    color: var(--chrome-bright);
+  }
+
+  /* Automotive Sapphire Metallic Chassis */
+  .chassis {
+    position: relative;
+    width: 928px;
+    height: 458px;
+    margin: 6px;
+    border-radius: 12px;
+    background:
+      radial-gradient(ellipse 68% 55% at 42% 32%, rgba(76, 175, 255, 0.28) 0%, rgba(16, 66, 132, 0.12) 48%, transparent 75%),
+      linear-gradient(135deg, #06152b 0%, #0f3f7d 34%, #1d64bd 52%, #0c3366 78%, #051224 100%);
+    box-shadow:
+      inset 0 1.5px 1px rgba(234, 242, 251, 0.65),
+      inset 0 -2px 3px rgba(3, 8, 17, 0.9),
+      0 0 0 1.5px #384e69;
+    padding: 12px 18px 14px 18px;
+    display: flex;
+    flex-direction: column;
+    gap: 10px;
+  }
+
+  /* Metallic Flake Clearcoat Overlay */
+  .flake-layer {
+    position: absolute;
+    inset: 0;
+    border-radius: 12px;
+    pointer-events: none;
+    opacity: 0.55;
+    mix-blend-mode: screen;
+  }
+
+  /* Interactive CNC Corner Screws */
+  .screw {
+    position: absolute;
+    width: 13px;
+    height: 13px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 32% 30%, #f0f6fc 0%, #98afc7 52%, #29384a 100%);
+    box-shadow: 0 1.5px 2px rgba(0, 0, 0, 0.85), inset 0 0 0 0.8px #08101c;
+    cursor: pointer;
+    z-index: 20;
+  }
+  .screw::before, .screw::after {
+    content: "";
+    position: absolute;
+    background: #162334;
+    border-radius: 1px;
+    top: 50%;
+    left: 50%;
+  }
+  .screw::before { width: 7px; height: 1.5px; transform: translate(-50%, -50%); }
+  .screw::after  { width: 1.5px; height: 7px; transform: translate(-50%, -50%); }
+  .screw.tl { top: 6px; left: 6px; }
+  .screw.tr { top: 6px; right: 6px; }
+  .screw.bl { bottom: 6px; left: 6px; }
+  .screw.br { bottom: 6px; right: 6px; }
+
+  /* Header Bar */
+  .header {
+    position: relative;
+    z-index: 10;
+    height: 46px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 6px;
+  }
+
+  .brand-group {
+    display: flex;
+    align-items: center;
+    gap: 11px;
+  }
+
+  .jewel {
+    width: 15px;
+    height: 15px;
+    border-radius: 50%;
+    background: radial-gradient(circle at 35% 32%, #ffffff 0%, #6cf0ff 28%, #0066cc 75%, #002b66 100%);
+    box-shadow:
+      0 0 12px rgba(76, 232, 255, 0.85),
+      0 0 0 2px #d8e6f5,
+      0 2px 4px rgba(0,0,0,0.8);
+  }
+
+  .badge {
+    width: 28px;
+    height: 26px;
+    border-radius: 6px;
+    background: linear-gradient(180deg, rgba(12, 28, 52, 0.9), rgba(4, 11, 22, 0.95));
+    border: 1.5px solid #9bb4cf;
+    box-shadow: 0 2px 5px rgba(0,0,0,0.6), inset 0 1px 0 rgba(255,255,255,0.25);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+  }
+
+  .title-stack h1 {
+    font-size: 22px;
+    font-weight: 800;
+    letter-spacing: 2.2px;
+    line-height: 1;
+    background: linear-gradient(180deg, #ffffff 15%, #b6cbe3 90%);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    filter: drop-shadow(0 2px 2px rgba(0,0,0,0.75));
+  }
+
+  .title-stack .subtitle {
+    font-family: "Consolas", "JetBrains Mono", monospace;
+    font-size: 9.5px;
+    font-weight: 700;
+    letter-spacing: 1.1px;
+    color: var(--cyan);
+    margin-top: 2px;
+    opacity: 0.92;
+  }
+
+  /* Live Haas Telemetry OLED */
+  .telemetry-pill {
+    height: 30px;
+    padding: 0 14px;
+    border-radius: 6px;
+    background: rgba(3, 10, 22, 0.9);
+    border: 1px solid rgba(143, 168, 196, 0.36);
+    box-shadow: inset 0 2px 6px rgba(0, 0, 0, 0.85), 0 1px 0 rgba(255, 255, 255, 0.12);
+    display: flex;
+    align-items: center;
+    font-family: "Consolas", "JetBrains Mono", monospace;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--cyan);
+    letter-spacing: 0.4px;
+    white-space: nowrap;
+  }
+
+  /* Custom Preset Selector (Supports re-selecting dirty preset) */
+  .preset-wrapper {
+    position: relative;
+    width: 204px;
+    height: 30px;
+  }
+
+  .preset-btn {
+    width: 100%;
+    height: 100%;
+    border-radius: 6px;
+    background: linear-gradient(180deg, #071326 0%, #030914 100%);
+    border: 1px solid rgba(175, 200, 228, 0.5);
+    box-shadow: inset 0 1px 0 rgba(255, 255, 255, 0.15), 0 2px 5px rgba(0,0,0,0.65);
+    color: var(--chrome-bright);
+    font-size: 12px;
+    font-weight: 700;
+    padding: 0 28px 0 10px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    cursor: pointer;
+    text-align: left;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+
+  .preset-btn.modified {
+    color: #ffd670;
+    border-color: rgba(255, 190, 61, 0.65);
+  }
+
+  .preset-btn .chevron {
+    position: absolute;
+    right: 10px;
+    top: 50%;
+    transform: translateY(-50%);
+    color: var(--cyan);
+    font-size: 10px;
+    pointer-events: none;
+  }
+
+  .preset-menu {
+    position: absolute;
+    top: 34px;
+    right: 0;
+    width: 216px;
+    background: rgba(6, 18, 38, 0.98);
+    border: 1px solid rgba(76, 232, 255, 0.55);
+    border-radius: 7px;
+    box-shadow: 0 12px 28px rgba(0, 0, 0, 0.9);
+    padding: 4px;
+    display: none;
+    z-index: 100;
+  }
+
+  .preset-menu.open {
+    display: block;
+  }
+
+  .preset-item {
+    padding: 6px 10px;
+    font-size: 11.5px;
+    font-weight: 600;
+    color: var(--chrome-bright);
+    border-radius: 4px;
+    cursor: pointer;
+  }
+
+  .preset-item:hover {
+    background: #1854a6;
+    color: var(--cyan);
+  }
+
+  .preset-item.active {
+    background: rgba(76, 232, 255, 0.14);
+    color: var(--cyan);
+  }
+
+  /* Main Workspace Grid: Left Meter | Center Control Bays | Right Meter */
+  .workspace {
+    position: relative;
+    z-index: 5;
+    flex: 1;
+    display: grid;
+    grid-template-columns: 72px 1fr 72px;
+    gap: 12px;
+  }
+
+  .meter-bay {
+    background: rgba(4, 13, 27, 0.86);
+    border-radius: 8px;
+    border: 1px solid rgba(180, 205, 232, 0.22);
+    box-shadow: inset 0 2px 8px rgba(0, 0, 0, 0.85);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding: 6px 4px;
+  }
+
+  .meter-title {
+    font-size: 10px;
+    font-weight: 800;
+    letter-spacing: 0.9px;
+    color: var(--chrome-bright);
+    margin-bottom: 4px;
+  }
+
+  .meter-canvas {
+    width: 62px;
+    height: 312px;
+    display: block;
+  }
+
+  .meter-peak {
+    margin-top: 4px;
+    font-family: "Consolas", "JetBrains Mono", monospace;
+    font-size: 10.5px;
+    font-weight: 700;
+    color: var(--cyan);
+  }
+
+  .meter-peak.clip {
+    color: var(--crimson);
+  }
+
+  /* Center Smoked-Glass Control Bays */
+  .center-stack {
+    display: flex;
+    flex-direction: column;
+    gap: 11px;
+  }
+
+  .control-bay {
+    background: var(--glass-bg);
+    border-radius: 9px;
+    border: 1px solid rgba(185, 210, 238, 0.22);
+    box-shadow:
+      inset 0 2px 10px rgba(0, 0, 0, 0.78),
+      0 1px 0 rgba(255, 255, 255, 0.12);
+    display: flex;
+    align-items: center;
+    justify-content: space-around;
+    padding: 6px 12px;
+  }
+
+  .control-bay.top-bay { height: 192px; }
+  .control-bay.bot-bay { height: 169px; }
+
+  .bay-divider {
+    width: 1.5px;
+    height: 124px;
+    background: linear-gradient(180deg, transparent, rgba(234, 242, 251, 0.28), transparent);
+    box-shadow: -1px 0 0 rgba(0, 0, 0, 0.7);
+  }
+
+  /* Individual 3D Knob Module */
+  .knob-unit {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    width: 112px;
+  }
+
+  .knob-unit.hero {
+    width: 132px;
+  }
+
+  .knob-title {
+    font-size: 11px;
+    font-weight: 800;
+    letter-spacing: 0.7px;
+    color: var(--chrome-bright);
+    line-height: 1.1;
+  }
+
+  .knob-unit.hero .knob-title {
+    font-size: 12px;
+  }
+
+  .knob-sub {
+    font-family: "Consolas", "JetBrains Mono", monospace;
+    font-size: 9px;
+    font-weight: 700;
+    letter-spacing: 0.6px;
+    color: var(--chrome-mid);
+    margin-bottom: 3px;
+  }
+
+  .knob-unit.hero .knob-sub {
+    color: var(--cyan);
+  }
+
+  .dial-stage {
+    position: relative;
+    width: 84px;
+    height: 84px;
+    cursor: ns-resize;
+  }
+
+  .knob-unit.hero .dial-stage {
+    width: 102px;
+    height: 102px;
+  }
+
+  .knob-unit.compact .dial-stage {
+    width: 74px;
+    height: 74px;
+  }
+
+  /* Realistic 3D Billet Aluminum & Knurled Cap */
+  .knob-3d-body {
+    position: absolute;
+    inset: 15%;
+    border-radius: 50%;
+    background:
+      conic-gradient(
+        from 20deg,
+        rgba(255,255,255,0.16) 0deg,
+        rgba(15,25,40,0.2) 55deg,
+        rgba(255,255,255,0.18) 125deg,
+        rgba(10,18,30,0.3) 200deg,
+        rgba(255,255,255,0.14) 295deg,
+        rgba(255,255,255,0.16) 360deg
+      ),
+      radial-gradient(circle at 34% 28%, #4b6584 0%, #24354a 48%, #0e1622 100%);
+    box-shadow:
+      0 6px 10px rgba(0, 0, 0, 0.85),
+      0 3px 0 #0a111c,
+      inset 0 1.5px 1.5px rgba(255, 255, 255, 0.42),
+      inset 0 -2px 3px rgba(0, 0, 0, 0.85),
+      0 0 0 2px #1c2838,
+      0 0 0 3.2px rgba(215, 232, 248, 0.45);
+    pointer-events: none;
+  }
+
+  .knob-rotor {
+    position: absolute;
+    inset: 0;
+    border-radius: 50%;
+    will-change: transform;
+  }
+
+  .knob-pointer {
+    position: absolute;
+    top: 10%;
+    left: 50%;
+    width: 3px;
+    height: 36%;
+    transform: translateX(-50%);
+    border-radius: 2px;
+    background: #ffffff;
+    box-shadow: 0 0 6px var(--accent-col, var(--cyan)), 0 1px 2px rgba(0,0,0,0.95);
+  }
+
+  /* Smoked-Glass Value Pill + Keyboard Edit Input */
+  .readout-box {
+    margin-top: 3px;
+    width: 78px;
+    height: 20px;
+    border-radius: 4px;
+    background: linear-gradient(180deg, rgba(255,255,255,0.06) 0%, rgba(4, 11, 22, 0.92) 45%);
+    border: 1px solid rgba(143, 168, 196, 0.38);
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    cursor: text;
+  }
+
+  .readout-box:hover {
+    border-color: var(--cyan);
+  }
+
+  .readout-text {
+    font-family: "Consolas", "JetBrains Mono", monospace;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--chrome-bright);
+  }
+
+  .knob-unit.hero .readout-text {
+    color: var(--cyan);
+  }
+
+  .readout-input {
+    width: 100%;
+    height: 100%;
+    background: #030914;
+    border: 1px solid var(--cyan);
+    border-radius: 3px;
+    color: var(--cyan);
+    font-family: "Consolas", "JetBrains Mono", monospace;
+    font-size: 11px;
+    font-weight: 700;
+    text-align: center;
+    outline: none;
+    user-select: text;
+    -webkit-user-select: text;
+  }
+
+  /* 2.5s Delay Quick-Manual HUD Tooltip */
+  .hud-tooltip {
+    position: fixed;
+    max-width: 315px;
+    padding: 9px 13px 9px 15px;
+    border-radius: 6px;
+    background: rgba(5, 14, 28, 0.96);
+    border: 1px solid rgba(76, 232, 255, 0.62);
+    box-shadow: 0 10px 26px rgba(0, 0, 0, 0.88), inset 0 1px 0 rgba(255,255,255,0.08);
+    pointer-events: none;
+    opacity: 0;
+    transform: translateY(4px);
+    transition: opacity 0.16s ease, transform 0.16s ease;
+    z-index: 999;
+  }
+
+  .hud-tooltip.visible {
+    opacity: 1;
+    transform: translateY(0);
+  }
+
+  .hud-tooltip::before {
+    content: "";
+    position: absolute;
+    left: 4px;
+    top: 7px;
+    bottom: 7px;
+    width: 3px;
+    border-radius: 2px;
+    background: var(--cyan);
+  }
+
+  .hud-tip-title {
+    font-family: "Consolas", "JetBrains Mono", monospace;
+    font-size: 11px;
+    font-weight: 700;
+    color: var(--cyan);
+    margin-bottom: 4px;
+  }
+
+  .hud-tip-body {
+    font-size: 11px;
+    line-height: 1.38;
+    color: var(--chrome-bright);
+  }
+</style>
+</head>
+<body>
+  <div class="chassis" id="chassis">
+    <canvas class="flake-layer" id="flakeCanvas" width="928" height="458"></canvas>
+
+    <!-- 4 Interactive Corner Screws -->
+    <div class="screw tl" data-tip-title="CNC CHASSIS FASTENER" data-tip-body="Click to spin the billet stainless screw."></div>
+    <div class="screw tr" data-tip-title="CNC CHASSIS FASTENER" data-tip-body="Click to spin the billet stainless screw."></div>
+    <div class="screw bl" data-tip-title="CNC CHASSIS FASTENER" data-tip-body="Click to spin the billet stainless screw."></div>
+    <div class="screw br" data-tip-title="CNC CHASSIS FASTENER" data-tip-body="Click to spin the billet stainless screw."></div>
+
+    <!-- Header -->
+    <div class="header">
+      <div class="brand-group">
+        <div class="jewel"></div>
+        <div class="badge">
+          <svg width="18" height="16" viewBox="0 0 18 16">
+            <path d="M2 2 L9 14 L16 2" fill="none" stroke="#4ce8ff" stroke-width="2.6" stroke-linecap="round" stroke-linejoin="round"/>
+          </svg>
+        </div>
+        <div class="title-stack">
+          <h1>VULCAN</h1>
+          <div class="subtitle">PHASE &amp; TRANSIENT MASTERING ENGINE</div>
+        </div>
+      </div>
+
+      <div class="telemetry-pill" id="telemetryPill"
+           data-tip-title="LIVE HAAS TELEMETRY"
+           data-tip-body="Real-time readout of active L/R sample offsets (Mid / High bands), millisecond delay, and DAW sample rate.">
+        HAAS: 11/19 SMP (0.43 ms) &nbsp;|&nbsp; 44.1 kHz
+      </div>
+
+      <div class="preset-wrapper" id="presetWrapper"
+           data-tip-title="PRESET BANK"
+           data-tip-body="Select a factory mastering curve (preserves Input/Output trims). An asterisk (*) indicates manual edits - re-select the same preset anytime to restore its settings.">
+        <button class="preset-btn" id="presetBtn" type="button">
+          <span id="presetLabel">01. Default / Clean</span>
+          <span class="chevron">&#9662;</span>
+        </button>
+        <div class="preset-menu" id="presetMenu"></div>
+      </div>
+    </div>
+
+    <!-- Main Workspace -->
+    <div class="workspace">
+      <!-- Input Stereo Meter -->
+      <div class="meter-bay"
+           data-tip-title="INPUT PEAK METER (dBFS)"
+           data-tip-body="Displays post-Input-Trim stereo peak levels with 32-segment resolution, peak hold, and 0 dBFS clip indicators.">
+        <div class="meter-title">INPUT</div>
+        <canvas class="meter-canvas" id="inMeterCanvas" width="124" height="624"></canvas>
+        <div class="meter-peak" id="inPeakText">-INF</div>
+      </div>
+
+      <!-- Center Dual Control Banks -->
+      <div class="center-stack">
+        <div class="control-bay top-bay" id="topBay"></div>
+        <div class="control-bay bot-bay" id="botBay"></div>
+      </div>
+
+      <!-- Output Stereo Meter -->
+      <div class="meter-bay"
+           data-tip-title="OUTPUT MASTER METER (dBFS)"
+           data-tip-body="Displays final post-limiter, post-16-bit TPDF dithered stereo output levels and peak hold ceiling.">
+        <div class="meter-title">OUTPUT</div>
+        <canvas class="meter-canvas" id="outMeterCanvas" width="124" height="624"></canvas>
+        <div class="meter-peak" id="outPeakText">-INF</div>
+      </div>
+    </div>
+  </div>
+
+  <!-- 2.5s Hover Quick-Manual HUD -->
+  <div class="hud-tooltip" id="hudTooltip">
+    <div class="hud-tip-title" id="hudTipTitle"></div>
+    <div class="hud-tip-body" id="hudTipBody"></div>
+  </div>
+
+<script>
+(() => {
+  // ===========================================================================
+  // 1. JUCE 8 Native WebSliderRelay Bridge
+  // ===========================================================================
+  const backend = window.__JUCE__ ? window.__JUCE__.backend : null;
+
+  class JuceSliderClient {
+    constructor(paramId, defaultNorm, onUpdate) {
+      this.paramId = paramId;
+      this.norm = defaultNorm;
+      this.onUpdate = onUpdate;
+
+      if (backend) {
+        backend.addEventListener(paramId, (ev) => {
+          if (!ev) return;
+          if (ev.eventType === "valueChanged" && typeof ev.value === "number") {
+            this.norm = Math.max(0, Math.min(1, ev.value));
+            this.onUpdate(this.norm);
+          }
+        });
+        backend.emitEvent(paramId, { eventType: "requestInitialUpdate" });
+      }
+    }
+
+    beginGesture() {
+      if (backend) backend.emitEvent(this.paramId, { eventType: "sliderDragStarted" });
+    }
+
+    setNormalisedValue(n) {
+      this.norm = Math.max(0, Math.min(1, n));
+      this.onUpdate(this.norm);
+      if (backend) backend.emitEvent(this.paramId, { eventType: "valueChanged", value: this.norm });
+    }
+
+    endGesture() {
+      if (backend) backend.emitEvent(this.paramId, { eventType: "sliderDragEnded" });
+    }
+  }
+
+  // ===========================================================================
+  // 2. Render Automotive Metallic Flake Grain Once on Offscreen Canvas
+  // ===========================================================================
+  (() => {
+    const c = document.getElementById("flakeCanvas");
+    const ctx = c.getContext("2d");
+    let seed = 20261124;
+    const rand = () => {
+      seed = (seed * 1664525 + 1013904223) >>> 0;
+      return seed / 4294967296;
+    };
+    const lx = c.width * 0.42;
+    const ly = c.height * 0.32;
+
+    for (let i = 0; i < 11000; i++) {
+      const x = rand() * c.width;
+      const y = rand() * c.height;
+      const dx = (x - lx) / c.width;
+      const dy = (y - ly) / c.height;
+      const catchLight = Math.max(0, 1 - Math.sqrt(dx * dx + dy * dy) * 1.4);
+      const alpha = (0.03 + 0.18 * catchLight) * rand();
+      ctx.fillStyle = `rgba(175, 222, 255, ${alpha.toFixed(3)})`;
+      const s = rand() > 0.88 ? 1.5 : 1.0;
+      ctx.fillRect(x, y, s, s);
+    }
+  })();
+
+  // ===========================================================================
+  // 3. Knob Definitions & SVG/CSS 3D Builder
+  // ===========================================================================
+  const KNOB_SPECS = [
+    // Top Bank
+    {
+      bank: "top", id: "input_gain", title: "INPUT", sub: "TRIM",
+      min: -24, max: 24, def: 0, bipolar: true, hero: false, compact: false,
+      accent: "#ffbe3d",
+      fmt: (v) => `${v > 0.05 ? "+" : ""}${v.toFixed(1)} dB`,
+      parse: (s) => parseFloat(s),
+      tipTitle: "INPUT TRIM (-24 to +24 dB)",
+      tipBody: "Adjusts incoming gain before Pre-EQ and saturation. Aim for peaks around -6 dBFS on the Input Meter. Locked across preset changes. [Click readout to type | Double-click knob to reset]"
+    },
+    {
+      bank: "top", id: "mono_freq", title: "MONO LOCK", sub: "X-OVER",
+      min: 80, max: 800, def: 250, bipolar: false, hero: false, compact: false,
+      accent: "#eaf2fb",
+      fmt: (v) => `${Math.round(v)} Hz`,
+      parse: (s) => parseFloat(s),
+      tipTitle: "MONO LOCK CROSSOVER (80 - 800 Hz)",
+      tipBody: "Sums frequencies below this cutoff to pure mono while keeping upper bands wide. Tightens sub-bass & 808 punch with zero phase smear. Sweet spot: 150 - 250 Hz."
+    },
+    {
+      bank: "top", id: "haas_amount", title: "STEREO WIDTH", sub: "HAAS L/R",
+      min: 0, max: 1, def: 0.46, bipolar: false, hero: true, compact: false,
+      accent: "#4ce8ff",
+      fmt: (v) => `${Math.round(v * 100)} %`,
+      parse: (s) => parseFloat(s) / 100.0,
+      tipTitle: "STEREO WIDTH // HAAS PHASE MATRIX (0 - 100%)",
+      tipBody: "Introduces sample-rate-compensated L/R micro-delays in Mid & High bands to expand width and break static phase symmetry. Default: 46% (11 / 19 smp at 44.1 kHz)."
+    },
+    {
+      bank: "top", id: "amount", title: "HARMONICS", sub: "SATURATE",
+      min: 0, max: 2, def: 0, bipolar: false, hero: false, compact: false,
+      accent: "#ffbe3d",
+      fmt: (v) => `${Math.round(v * 50)} %`,
+      parse: (s) => parseFloat(s) / 50.0,
+      tipTitle: "HARMONICS // 4X OVERSAMPLED SATURATION (0 - 100%)",
+      tipBody: "Engages 3-band glue compression and asymmetric tanh tube/tape saturation with 4x polyphase oversampling. Adds analog density and harmonic warmth."
+    },
+    {
+      bank: "top", id: "output_gain", title: "OUTPUT", sub: "LEVEL",
+      min: -24, max: 24, def: 0, bipolar: true, hero: false, compact: false,
+      accent: "#eaf2fb",
+      fmt: (v) => `${v > 0.05 ? "+" : ""}${v.toFixed(1)} dB`,
+      parse: (s) => parseFloat(s),
+      tipTitle: "OUTPUT TRIM (-24 to +24 dB)",
+      tipBody: "Final post-limiter gain stage prior to 16-bit TPDF dithering. Use to level-match processed vs. bypassed audio. Locked across preset changes."
+    },
+
+    // Bottom Bank
+    {
+      bank: "bot", id: "eq_low", title: "LOW", sub: "100 Hz",
+      min: -12, max: 12, def: 0, bipolar: true, hero: false, compact: true,
+      accent: "#4ce8ff",
+      fmt: (v) => `${v > 0.05 ? "+" : ""}${v.toFixed(1)} dB`,
+      parse: (s) => parseFloat(s),
+      tipTitle: "PRE-EQ LOW SHELF // 100 Hz (-12 to +12 dB)",
+      tipBody: "Smooth 100 Hz low-shelf filter feeding the crossover and saturation stage. Shapes sub weight and low-end punch before compression."
+    },
+    {
+      bank: "bot", id: "eq_mid", title: "MID", sub: "2.5 kHz",
+      min: -12, max: 12, def: 0, bipolar: true, hero: false, compact: true,
+      accent: "#4ce8ff",
+      fmt: (v) => `${v > 0.05 ? "+" : ""}${v.toFixed(1)} dB`,
+      parse: (s) => parseFloat(s),
+      tipTitle: "PRE-EQ MID BELL // 2.5 kHz (-12 to +12 dB)",
+      tipBody: "Musical presence bell (Q = 1.0) positioned pre-saturation. Enhances vocal articulation, synth bite, or tames upper-mid harshness."
+    },
+    {
+      bank: "bot", id: "eq_high", title: "HIGH", sub: "10 kHz",
+      min: -12, max: 12, def: 0, bipolar: true, hero: false, compact: true,
+      accent: "#4ce8ff",
+      fmt: (v) => `${v > 0.05 ? "+" : ""}${v.toFixed(1)} dB`,
+      parse: (s) => parseFloat(s),
+      tipTitle: "PRE-EQ HIGH SHELF // 10 kHz (-12 to +12 dB)",
+      tipBody: "10 kHz air shelf ahead of the harmonic engine. Boosts high-frequency sheen or softens brittle digital transients."
+    },
+    {
+      bank: "bot", id: "limiter_drive", title: "CEILING DRV", sub: "LIMITER",
+      min: 0, max: 18, def: 0, bipolar: false, hero: false, compact: false,
+      accent: "#ffbe3d",
+      fmt: (v) => `${v.toFixed(1)} dB`,
+      parse: (s) => parseFloat(s),
+      tipTitle: "CEILING DRIVE // BRICKWALL LIMITER (0 to +18 dB)",
+      tipBody: "Drives the mix into a fast transparent brickwall limiter (-0.1 dBFS ceiling, 1 ms attack / 50 ms release) for commercial loudness."
+    }
+  ];
+
+  const START_DEG = -135;
+  const END_DEG = 135;
+  const knobInstances = {};
+  let currentSampleRate = 44100;
+
+  function polarToCartesian(cx, cy, r, deg) {
+    const rad = ((deg - 90) * Math.PI) / 180;
+    return { x: cx + r * Math.cos(rad), y: cy + r * Math.sin(rad) };
+  }
+
+  function describeArc(cx, cy, r, startDeg, endDeg) {
+    if (Math.abs(endDeg - startDeg) < 0.4) return "";
+    const a0 = Math.min(startDeg, endDeg);
+    const a1 = Math.max(startDeg, endDeg);
+    const start = polarToCartesian(cx, cy, r, a1);
+    const end = polarToCartesian(cx, cy, r, a0);
+    const largeArc = a1 - a0 <= 180 ? "0" : "1";
+    return `M ${start.x.toFixed(2)} ${start.y.toFixed(2)} A ${r} ${r} 0 ${largeArc} 0 ${end.x.toFixed(2)} ${end.y.toFixed(2)}`;
+  }
+
+  function updateTelemetryPill() {
+    const haasInst = knobInstances["haas_amount"];
+    const widthVal = haasInst ? haasInst.client.norm : 0.46;
+    const rateMult = currentSampleRate / 44100.0;
+    const dMid = Math.round(23.0 * rateMult * widthVal);
+    const dHigh = Math.round(41.0 * rateMult * widthVal);
+    const msHigh = (dHigh / currentSampleRate) * 1000.0;
+    document.getElementById("telemetryPill").textContent =
+      `HAAS: ${dMid}/${dHigh} SMP (${msHigh.toFixed(2)} ms)  |  ${(currentSampleRate / 1000).toFixed(1)} kHz`;
+  }
+
+  function buildKnobDOM(spec) {
+    const unit = document.createElement("div");
+    unit.className = `knob-unit ${spec.hero ? "hero" : ""} ${spec.compact ? "compact" : ""}`;
+    unit.dataset.tipTitle = spec.tipTitle;
+    unit.dataset.tipBody = spec.tipBody;
+
+    const titleEl = document.createElement("div");
+    titleEl.className = "knob-title";
+    titleEl.textContent = spec.title;
+
+    const subEl = document.createElement("div");
+    subEl.className = "knob-sub";
+    subEl.textContent = spec.sub;
+
+    const stage = document.createElement("div");
+    stage.className = "dial-stage";
+    stage.style.setProperty("--accent-col", spec.accent);
+
+    // SVG Scale Ticks + Luminous Value Arc
+    const svgNS = "http://www.w3.org/2000/svg";
+    const svg = document.createElementNS(svgNS, "svg");
+    svg.setAttribute("viewBox", "0 0 100 100");
+    svg.style.width = "100%";
+    svg.style.height = "100%";
+
+    for (let i = 0; i < 21; i++) {
+      const deg = START_DEG + (i / 20) * (END_DEG - START_DEG);
+      const major = i % 5 === 0;
+      const p1 = polarToCartesian(50, 50, major ? 43.5 : 45.5, deg);
+      const p2 = polarToCartesian(50, 50, 49.0, deg);
+      const tick = document.createElementNS(svgNS, "line");
+      tick.setAttribute("x1", p1.x.toFixed(1));
+      tick.setAttribute("y1", p1.y.toFixed(1));
+      tick.setAttribute("x2", p2.x.toFixed(1));
+      tick.setAttribute("y2", p2.y.toFixed(1));
+      tick.setAttribute("stroke", major ? "rgba(234,242,251,0.85)" : "rgba(143,168,196,0.38)");
+      tick.setAttribute("stroke-width", major ? "1.6" : "1.0");
+      svg.appendChild(tick);
+    }
+
+    const bgTrack = document.createElementNS(svgNS, "path");
+    bgTrack.setAttribute("d", describeArc(50, 50, 39.5, START_DEG, END_DEG));
+    bgTrack.setAttribute("fill", "none");
+    bgTrack.setAttribute("stroke", "rgba(3, 8, 17, 0.88)");
+    bgTrack.setAttribute("stroke-width", "3.6");
+    bgTrack.setAttribute("stroke-linecap", "round");
+    svg.appendChild(bgTrack);
+
+    const activeArc = document.createElementNS(svgNS, "path");
+    activeArc.setAttribute("fill", "none");
+    activeArc.setAttribute("stroke", spec.accent);
+    activeArc.setAttribute("stroke-width", "3.4");
+    activeArc.setAttribute("stroke-linecap", "round");
+    activeArc.style.filter = `drop-shadow(0 0 3px ${spec.accent})`;
+    svg.appendChild(activeArc);
+
+    const body3D = document.createElement("div");
+    body3D.className = "knob-3d-body";
+
+    const rotor = document.createElement("div");
+    rotor.className = "knob-rotor";
+    const pointer = document.createElement("div");
+    pointer.className = "knob-pointer";
+    rotor.appendChild(pointer);
+    body3D.appendChild(rotor);
+
+    stage.appendChild(svg);
+    stage.appendChild(body3D);
+
+    // Digital Readout Pill (Click to type exact value)
+    const readoutBox = document.createElement("div");
+    readoutBox.className = "readout-box";
+    const readoutText = document.createElement("span");
+    readoutText.className = "readout-text";
+    readoutBox.appendChild(readoutText);
+
+    unit.appendChild(titleEl);
+    unit.appendChild(subEl);
+    unit.appendChild(stage);
+    unit.appendChild(readoutBox);
+
+    const defNorm = (spec.def - spec.min) / (spec.max - spec.min);
+
+    const renderKnobVisuals = (norm) => {
+      const deg = START_DEG + norm * (END_DEG - START_DEG);
+      rotor.style.transform = `rotate(${deg.toFixed(2)}deg)`;
+      const originDeg = spec.bipolar ? 0 : START_DEG;
+      activeArc.setAttribute("d", describeArc(50, 50, 39.5, originDeg, deg));
+
+      const realVal = spec.min + norm * (spec.max - spec.min);
+      readoutText.textContent = spec.fmt(realVal);
+      if (spec.id === "haas_amount") updateTelemetryPill();
+    };
+
+    const client = new JuceSliderClient(spec.id, defNorm, renderKnobVisuals);
+    renderKnobVisuals(defNorm);
+
+    // Mouse Drag Interaction (Shift = 10x Fine Precision)
+    stage.addEventListener("mousedown", (e) => {
+      if (e.button !== 0) return;
+      e.preventDefault();
+      hideTooltip();
+      client.beginGesture();
+      let lastY = e.clientY;
+
+      const onMove = (mv) => {
+        const dy = lastY - mv.clientY;
+        lastY = mv.clientY;
+        const speed = mv.shiftKey ? 0.0008 : 0.0045;
+        client.setNormalisedValue(client.norm + dy * speed);
+      };
+
+      const onUp = () => {
+        window.removeEventListener("mousemove", onMove);
+        window.removeEventListener("mouseup", onUp);
+        client.endGesture();
+      };
+
+      window.addEventListener("mousemove", onMove);
+      window.addEventListener("mouseup", onUp);
+    });
+
+    // Double-Click Knob -> Reset to Default
+    stage.addEventListener("dblclick", () => {
+      client.beginGesture();
+      client.setNormalisedValue(defNorm);
+      client.endGesture();
+    });
+
+    // Mouse Wheel Fine Adjustment
+    stage.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      const step = e.shiftKey ? 0.002 : 0.012;
+      const dir = e.deltaY < 0 ? 1 : -1;
+      client.beginGesture();
+      client.setNormalisedValue(client.norm + dir * step);
+      client.endGesture();
+    }, { passive: false });
+
+    // Direct Keyboard Numeric Input on Readout Click
+    readoutBox.addEventListener("click", () => {
+      if (readoutBox.querySelector("input")) return;
+      hideTooltip();
+      const realVal = spec.min + client.norm * (spec.max - spec.min);
+      const displayNum = spec.id === "haas_amount" ? Math.round(realVal * 100)
+                       : spec.id === "amount"      ? Math.round(realVal * 50)
+                       : spec.id === "mono_freq"   ? Math.round(realVal)
+                       : Number(realVal.toFixed(2));
+
+      const input = document.createElement("input");
+      input.type = "text";
+      input.className = "readout-input";
+      input.value = String(displayNum);
+      readoutBox.innerHTML = "";
+      readoutBox.appendChild(input);
+      input.focus();
+      input.select();
+
+      const commit = () => {
+        const parsed = spec.parse(input.value.replace(/[^0-9.\-]/g, ""));
+        if (!Number.isNaN(parsed)) {
+          const clamped = Math.max(spec.min, Math.min(spec.max, parsed));
+          const newNorm = (clamped - spec.min) / (spec.max - spec.min);
+          client.beginGesture();
+          client.setNormalisedValue(newNorm);
+          client.endGesture();
+        }
+        readoutBox.innerHTML = "";
+        readoutBox.appendChild(readoutText);
+        renderKnobVisuals(client.norm);
+      };
+
+      input.addEventListener("keydown", (ke) => {
+        if (ke.key === "Enter") { ke.preventDefault(); commit(); }
+        if (ke.key === "Escape") {
+          readoutBox.innerHTML = "";
+          readoutBox.appendChild(readoutText);
+          renderKnobVisuals(client.norm);
+        }
+      });
+      input.addEventListener("blur", commit);
+    });
+
+    knobInstances[spec.id] = { spec, client };
+    return unit;
+  }
+
+  const topBay = document.getElementById("topBay");
+  const botBay = document.getElementById("botBay");
+  KNOB_SPECS.forEach((spec, idx) => {
+    const el = buildKnobDOM(spec);
+    if (spec.bank === "top") {
+      topBay.appendChild(el);
+    } else {
+      if (idx === 8) {
+        const div = document.createElement("div");
+        div.className = "bay-divider";
+        botBay.appendChild(div);
+      }
+      botBay.appendChild(el);
+    }
+  });
+
+  // ===========================================================================
+  // 4. Preset Selector (Supports Re-selecting Modified Preset to Reset)
+  // ===========================================================================
+  let presetNames = [
+    "01. Default / Clean",
+    "02. Glue & Punch",
+    "03. 808 Sub Enhancer",
+    "04. Drill Aggression",
+    "05. Vocal Silk (Air)",
+    "06. Analog Tape Warmth",
+    "07. Master Polish",
+    "08. Lo-Fi Vibe"
+  ];
+  let activePresetIdx = 0;
+  let isDirty = false;
+
+  const presetBtn = document.getElementById("presetBtn");
+  const presetLabel = document.getElementById("presetLabel");
+  const presetMenu = document.getElementById("presetMenu");
+
+  function renderPresetUI() {
+    const name = presetNames[activePresetIdx] || "01. Default / Clean";
+    presetLabel.textContent = isDirty ? `${name} *` : name;
+    presetBtn.classList.toggle("modified", isDirty);
+
+    presetMenu.innerHTML = "";
+    presetNames.forEach((pName, idx) => {
+      const item = document.createElement("div");
+      item.className = "preset-item" + (idx === activePresetIdx && !isDirty ? " active" : "");
+      item.textContent = pName;
+      item.addEventListener("click", (e) => {
+        e.stopPropagation();
+        presetMenu.classList.remove("open");
+        activePresetIdx = idx;
+        isDirty = false;
+        renderPresetUI();
+        if (backend) backend.emitEvent("selectPreset", { index: idx });
+      });
+      presetMenu.appendChild(item);
+    });
+  }
+
+  presetBtn.addEventListener("click", (e) => {
+    e.stopPropagation();
+    hideTooltip();
+    presetMenu.classList.toggle("open");
+  });
+
+  window.addEventListener("click", () => presetMenu.classList.remove("open"));
+  renderPresetUI();
+
+  // ===========================================================================
+  // 5. Dual 32-Segment Stereo VU/Peak Meter Bridges (60 FPS Canvas)
+  // ===========================================================================
+  function createMeterRenderer(canvasId, peakTextId) {
+    const canvas = document.getElementById(canvasId);
+    const ctx = canvas.getContext("2d");
+    const peakEl = document.getElementById(peakTextId);
+
+    const state = {
+      rawL: 0, rawR: 0,
+      smoothL: 0, smoothR: 0,
+      holdL: 0, holdR: 0,
+      timerL: 0, timerR: 0
+    };
+
+    const gainToDb = (g) => (g <= 0.00001 ? -48.0 : Math.max(-48.0, 20.0 * Math.log10(g)));
+
+    function draw() {
+      state.smoothL = state.rawL > state.smoothL ? state.rawL : state.smoothL * 0.86;
+      state.smoothR = state.rawR > state.smoothR ? state.rawR : state.smoothR * 0.86;
+
+      if (state.rawL >= state.holdL) { state.holdL = state.rawL; state.timerL = 45; }
+      else if (--state.timerL <= 0) { state.holdL *= 0.94; }
+
+      if (state.rawR >= state.holdR) { state.holdR = state.rawR; state.timerR = 45; }
+      else if (--state.timerR <= 0) { state.holdR *= 0.94; }
+
+      const W = canvas.width;
+      const H = canvas.height;
+      ctx.clearRect(0, 0, W, H);
+
+      const barW = 22;
+      const leftX = 14;
+      const rightX = W - 14 - barW;
+      const topY = 26;
+      const botY = H - 28;
+      const ladderH = botY - topY;
+
+      // Clip LEDs
+      const clipL = state.holdL >= 0.985;
+      const clipR = state.holdR >= 0.985;
+      ctx.fillStyle = clipL ? "#ff4d5e" : "#1c0b12";
+      ctx.fillRect(leftX, 6, barW, 11);
+      ctx.fillStyle = clipR ? "#ff4d5e" : "#1c0b12";
+      ctx.fillRect(rightX, 6, barW, 11);
+
+      // Recessed Ladder Wells
+      ctx.fillStyle = "#02060c";
+      ctx.fillRect(leftX, topY, barW, ladderH);
+      ctx.fillRect(rightX, topY, barW, ladderH);
+
+      const numSegs = 32;
+      const step = ladderH / numSegs;
+      const segH = step - 3.0;
+
+      const normL = Math.max(0, Math.min(1, (gainToDb(state.smoothL) + 48) / 48));
+      const normR = Math.max(0, Math.min(1, (gainToDb(state.smoothR) + 48) / 48));
+      const holdSegL = Math.round(Math.max(0, Math.min(1, (gainToDb(state.holdL) + 48) / 48)) * (numSegs - 1));
+      const holdSegR = Math.round(Math.max(0, Math.min(1, (gainToDb(state.holdR) + 48) / 48)) * (numSegs - 1));
+
+      for (let i = 0; i < numSegs; i++) {
+        const fromBot = numSegs - 1 - i;
+        const p = fromBot / (numSegs - 1);
+        const y = topY + i * step;
+
+        let rgb = "76, 232, 255";
+        if (p > 0.88) rgb = "255, 77, 94";
+        else if (p > 0.72) rgb = "255, 190, 61";
+        else if (p > 0.45) rgb = "44, 230, 138";
+
+        const litL = (normL >= p && state.smoothL > 0.0001) || (fromBot === holdSegL && state.holdL > 0.001);
+        const litR = (normR >= p && state.smoothR > 0.0001) || (fromBot === holdSegR && state.holdR > 0.001);
+
+        ctx.fillStyle = `rgba(${rgb}, ${litL ? 1.0 : 0.12})`;
+        ctx.fillRect(leftX + 2, y, barW - 4, segH);
+
+        ctx.fillStyle = `rgba(${rgb}, ${litR ? 1.0 : 0.12})`;
+        ctx.fillRect(rightX + 2, y, barW - 4, segH);
+      }
+
+      // Scale Markings
+      ctx.fillStyle = "rgba(143, 168, 196, 0.88)";
+      ctx.font = "bold 17px Consolas, monospace";
+      ctx.textAlign = "center";
+      [0, -6, -12, -24, -36].forEach((m) => {
+        const n = (m + 48) / 48;
+        const ym = botY - n * ladderH + 5;
+        ctx.fillText(String(Math.abs(m)), W * 0.5, ym);
+      });
+
+      // L / R Channel Labels
+      ctx.fillStyle = "#eaf2fb";
+      ctx.font = "bold 19px Consolas, monospace";
+      ctx.fillText("L", leftX + barW * 0.5, botY + 21);
+      ctx.fillText("R", rightX + barW * 0.5, botY + 21);
+
+      // Peak Numeric Readout
+      const maxPeak = Math.max(state.holdL, state.holdR);
+      peakEl.textContent = maxPeak <= 0.0005 ? "-INF" : (20.0 * Math.log10(maxPeak)).toFixed(1);
+      peakEl.classList.toggle("clip", clipL || clipR);
+    }
+
+    return { state, draw };
+  }
+
+  const inMeter = createMeterRenderer("inMeterCanvas", "inPeakText");
+  const outMeter = createMeterRenderer("outMeterCanvas", "outPeakText");
+
+  function animationLoop() {
+    inMeter.draw();
+    outMeter.draw();
+    requestAnimationFrame(animationLoop);
+  }
+  requestAnimationFrame(animationLoop);
+
+  // ===========================================================================
+  // 6. Interactive Corner Screws Easter Egg
+  // ===========================================================================
+  document.querySelectorAll(".screw").forEach((screw) => {
+    let angle = 25;
+    screw.addEventListener("click", () => {
+      angle += 270;
+      screw.style.transition = "transform 0.45s cubic-bezier(0.22, 1, 0.36, 1)";
+      screw.style.transform = `rotate(${angle}deg)`;
+    });
+  });
+
+  // ===========================================================================
+  // 7. 2.5-Second Hover Quick-Manual HUD Tooltip System
+  // ===========================================================================
+  const hudTip = document.getElementById("hudTooltip");
+  const hudTipTitle = document.getElementById("hudTipTitle");
+  const hudTipBody = document.getElementById("hudTipBody");
+  let hoverTimer = null;
+  let currentTarget = null;
+
+  function hideTooltip() {
+    clearTimeout(hoverTimer);
+    hoverTimer = null;
+    hudTip.classList.remove("visible");
+  }
+
+  document.addEventListener("mousemove", (e) => {
+    const target = e.target.closest("[data-tip-title]");
+    if (target !== currentTarget) {
+      hideTooltip();
+      currentTarget = target;
+      if (target) {
+        const mx = e.clientX;
+        const my = e.clientY;
+        hoverTimer = setTimeout(() => {
+          hudTipTitle.textContent = target.dataset.tipTitle;
+          hudTipBody.textContent = target.dataset.tipBody;
+          hudTip.classList.add("visible");
+
+          const rect = hudTip.getBoundingClientRect();
+          let left = mx + 14;
+          let top = my + 16;
+          if (left + rect.width > 930) left = mx - rect.width - 12;
+          if (top + rect.height > 460) top = my - rect.height - 12;
+          hudTip.style.left = `${Math.max(10, left)}px`;
+          hudTip.style.top = `${Math.max(10, top)}px`;
+        }, 2500);
+      }
+    }
+  });
+
+  document.addEventListener("mouseleave", hideTooltip);
+
+  // ===========================================================================
+  // 8. C++ Telemetry & Full Sync Event Listeners
+  // ===========================================================================
+  if (backend) {
+    backend.addEventListener("telemetryFrame", (data) => {
+      if (!data) return;
+      inMeter.state.rawL = data.inL || 0;
+      inMeter.state.rawR = data.inR || 0;
+      outMeter.state.rawL = data.outL || 0;
+      outMeter.state.rawR = data.outR || 0;
+
+      if (data.sampleRate && data.sampleRate !== currentSampleRate) {
+        currentSampleRate = data.sampleRate;
+        updateTelemetryPill();
+      }
+      if (typeof data.currentPreset === "number" &&
+          (data.currentPreset !== activePresetIdx || Boolean(data.presetModified) !== isDirty)) {
+        activePresetIdx = data.currentPreset;
+        isDirty = Boolean(data.presetModified);
+        renderPresetUI();
+      }
+    });
+
+    backend.addEventListener("fullSync", (data) => {
+      if (!data) return;
+      if (Array.isArray(data.presets) && data.presets.length > 0)
+        presetNames = data.presets;
+      if (typeof data.currentPreset === "number")
+        activePresetIdx = data.currentPreset;
+      isDirty = Boolean(data.presetModified);
+      if (data.sampleRate)
+        currentSampleRate = data.sampleRate;
+      renderPresetUI();
+      updateTelemetryPill();
+    });
+
+    backend.emitEvent("uiReady", {});
+  }
+})();
+</script>
+</body>
+</html>
