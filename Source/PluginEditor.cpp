@@ -47,6 +47,13 @@ VulcanEditor::VulcanEditor (VulcanProcessor& p)
                            pushFullSyncToWeb();
                        }
                    })
+                   .withEventListener ("setEditorSize", [this] (const juce::var& payload)
+                   {
+                       const int w = juce::jlimit (640, 1880, static_cast<int> (payload.getProperty ("width", 940)));
+                       const int h = juce::jlimit (320, 940,  static_cast<int> (payload.getProperty ("height", 470)));
+                       if (w != getWidth() || h != getHeight())
+                           setSize (w, h);
+                   })
                    .withEventListener ("uiReady", [this] (const juce::var&)
                    {
                        pushFullSyncToWeb();
@@ -63,6 +70,12 @@ VulcanEditor::VulcanEditor (VulcanProcessor& p)
 {
     setOpaque (true);
     addAndMakeVisible (webView);
+
+    // Enable smooth DAW & UI resizing with locked 2:1 aspect ratio
+    setResizable (true, false);
+    setResizeLimits (640, 320, 1880, 940);
+    if (auto* constrainer = getConstrainer())
+        constrainer->setFixedAspectRatio (2.0);
 
     webView.goToURL (juce::WebBrowserComponent::getResourceProviderRoot());
 
@@ -100,6 +113,8 @@ void VulcanEditor::pushFullSyncToWeb()
     obj->setProperty ("currentPreset", audioProcessor.getCurrentProgram());
     obj->setProperty ("presetModified", audioProcessor.isPresetModified());
     obj->setProperty ("sampleRate", audioProcessor.getSampleRate() > 0.0 ? audioProcessor.getSampleRate() : 44100.0);
+    obj->setProperty ("editorWidth", getWidth());
+    obj->setProperty ("editorHeight", getHeight());
 
     webView.emitEventIfBrowserIsVisible ("fullSync", juce::var (obj));
 }
