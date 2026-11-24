@@ -5,6 +5,31 @@ project(VulcanByDJSmartie VERSION 1.0.0)
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
+# Automatically fetch Microsoft.Web.WebView2 SDK headers on Windows
+if(WIN32)
+    set(WEBVIEW2_DIR "${CMAKE_BINARY_DIR}/_deps/webview2")
+    set(WEBVIEW2_NUPKG "${CMAKE_BINARY_DIR}/_deps/webview2.nupkg")
+
+    if(NOT EXISTS "${WEBVIEW2_DIR}/build/native/include/WebView2.h")
+        message(STATUS "Downloading Microsoft.Web.WebView2 SDK headers...")
+        file(DOWNLOAD
+            "https://www.nuget.org/api/v2/package/Microsoft.Web.WebView2/1.0.2903.40"
+            "${WEBVIEW2_NUPKG}"
+            SHOW_PROGRESS
+            STATUS WEBVIEW2_DL_STATUS
+        )
+        list(GET WEBVIEW2_DL_STATUS 0 WEBVIEW2_DL_CODE)
+        if(NOT WEBVIEW2_DL_CODE EQUAL 0)
+            message(FATAL_ERROR "Failed to download WebView2 SDK: ${WEBVIEW2_DL_STATUS}")
+        endif()
+
+        file(MAKE_DIRECTORY "${WEBVIEW2_DIR}")
+        file(ARCHIVE_EXTRACT INPUT "${WEBVIEW2_NUPKG}" DESTINATION "${WEBVIEW2_DIR}")
+    endif()
+
+    set(JUCE_WEBVIEW2_PACKAGE_LOCATION "${WEBVIEW2_DIR}" CACHE PATH "" FORCE)
+endif()
+
 include(FetchContent)
 FetchContent_Declare(
     JUCE
@@ -44,6 +69,13 @@ target_sources(VulcanByDJSmartie
         Source/PluginEditor.cpp
         Source/PluginEditor.h
 )
+
+if(WIN32)
+    target_include_directories(VulcanByDJSmartie
+        PRIVATE
+            "${WEBVIEW2_DIR}/build/native/include"
+    )
+endif()
 
 target_compile_definitions(VulcanByDJSmartie
     PUBLIC
