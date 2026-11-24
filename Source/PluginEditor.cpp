@@ -35,15 +35,32 @@ VulcanEditor::VulcanEditor (VulcanProcessor& p)
                            .withBackgroundColour (juce::Colour (0xff040911)))
                    .withNativeIntegrationEnabled()
                    .withResourceProvider ([this] (const auto& url) { return handleResourceRequest (url); })
-                   .withOptionsFrom (inGainRelay)
-                   .withOptionsFrom (eqLowRelay)
-                   .withOptionsFrom (eqMidRelay)
-                   .withOptionsFrom (eqHighRelay)
-                   .withOptionsFrom (monoFreqRelay)
-                   .withOptionsFrom (stereoWidthRelay)
-                   .withOptionsFrom (characterRelay)
-                   .withOptionsFrom (limiterDriveRelay)
-                   .withOptionsFrom (outGainRelay)
+                   .withNativeFunction ("paramGesture", [this] (const juce::Array<juce::var>& args,
+                                                                juce::WebBrowserComponent::NativeFunctionCompletion completion)
+                   {
+                       if (args.size() >= 2)
+                           handleParamGestureFromWeb (args[0].toString(), static_cast<bool> (args[1]));
+                       completion ({});
+                   })
+                   .withEventListener ("paramGesture", [this] (const juce::var& payload)
+                   {
+                       if (payload.isObject())
+                           handleParamGestureFromWeb (payload.getProperty ("id", "").toString(),
+                                                      static_cast<bool> (payload.getProperty ("active", false)));
+                   })
+                   .withNativeFunction ("setParam", [this] (const juce::Array<juce::var>& args,
+                                                            juce::WebBrowserComponent::NativeFunctionCompletion completion)
+                   {
+                       if (args.size() >= 2)
+                           handleSetParamFromWeb (args[0].toString(), static_cast<float> (args[1]));
+                       completion ({});
+                   })
+                   .withEventListener ("setParam", [this] (const juce::var& payload)
+                   {
+                       if (payload.isObject())
+                           handleSetParamFromWeb (payload.getProperty ("id", "").toString(),
+                                                  static_cast<float> (payload.getProperty ("value", 0.0f)));
+                   })
                    .withNativeFunction ("selectPreset", [this] (const juce::Array<juce::var>& args,
                                                                 juce::WebBrowserComponent::NativeFunctionCompletion completion)
                    {
@@ -85,16 +102,7 @@ VulcanEditor::VulcanEditor (VulcanProcessor& p)
                    .withEventListener ("uiReady", [this] (const juce::var&)
                    {
                        pushFullSyncToWeb();
-                   })),
-      inGainAttachment       (*audioProcessor.apvts.getParameter ("input_gain"),    inGainRelay,       nullptr),
-      eqLowAttachment        (*audioProcessor.apvts.getParameter ("eq_low"),        eqLowRelay,        nullptr),
-      eqMidAttachment        (*audioProcessor.apvts.getParameter ("eq_mid"),        eqMidRelay,        nullptr),
-      eqHighAttachment       (*audioProcessor.apvts.getParameter ("eq_high"),       eqHighRelay,       nullptr),
-      monoFreqAttachment     (*audioProcessor.apvts.getParameter ("mono_freq"),     monoFreqRelay,     nullptr),
-      stereoWidthAttachment  (*audioProcessor.apvts.getParameter ("haas_amount"),   stereoWidthRelay,  nullptr),
-      characterAttachment    (*audioProcessor.apvts.getParameter ("amount"),        characterRelay,    nullptr),
-      limiterDriveAttachment (*audioProcessor.apvts.getParameter ("limiter_drive"), limiterDriveRelay, nullptr),
-      outGainAttachment      (*audioProcessor.apvts.getParameter ("output_gain"),   outGainRelay,      nullptr)
+                   }))
 {
     setOpaque (true);
     addAndMakeVisible (webView);
@@ -114,6 +122,23 @@ VulcanEditor::VulcanEditor (VulcanProcessor& p)
 VulcanEditor::~VulcanEditor()
 {
     stopTimer();
+}
+
+void VulcanEditor::handleParamGestureFromWeb (const juce::String& paramId, bool isStarting)
+{
+    if (auto* param = audioProcessor.apvts.getParameter (paramId))
+    {
+        if (isStarting)
+            param->beginChangeGesture();
+        else
+            param->endChangeGesture();
+    }
+}
+
+void VulcanEditor::handleSetParamFromWeb (const juce::String& paramId, float normValue)
+{
+    if (auto* param = audioProcessor.apvts.getParameter (paramId))
+        param->setValueNotifyingHost (juce::jlimit (0.0f, 1.0f, normValue));
 }
 
 std::optional<juce::WebBrowserComponent::Resource> VulcanEditor::handleResourceRequest (const juce::String& url)
@@ -136,13 +161,6 @@ void VulcanEditor::pushFullSyncToWeb()
     for (int i = 0; i < audioProcessor.getNumPrograms(); ++i)
         presetList.add (audioProcessor.getProgramName (i));
 
-    auto* paramValues = new juce::DynamicObject();
-    for (const auto* id : kAllParamIDs)
-    {
-        if (auto* param = audioProcessor.apvts.getParameter (id))
-            paramValues->setProperty (id, static_cast<double> (param->getValue()));
-    }
-
     lastSyncedPreset = audioProcessor.getCurrentProgram();
     lastSyncedModified = audioProcessor.isPresetModified();
 
@@ -150,10 +168,15 @@ void VulcanEditor::pushFullSyncToWeb()
     obj->setProperty ("presets", presetList);
     obj->setProperty ("currentPreset", lastSyncedPreset);
     obj->setProperty ("presetModified", lastSyncedModified);
-    obj->setProperty ("paramValues", juce::var (paramValues));
     obj->setProperty ("sampleRate", audioProcessor.getSampleRate() > 0.0 ? audioProcessor.getSampleRate() : 44100.0);
     obj->setProperty ("editorWidth", getWidth());
     obj->setProperty ("editorHeight", getHeight());
+
+    for (const auto* id : kAllParamIDs)
+    {
+        if (auto* param = audioProcessor.apvts.getParameter (id))
+            obj->setProperty (juce::String ("p_") + id, static_cast<double> (param->getValue()));
+    }
 
     webView.emitEventIfBrowserIsVisible ("fullSync", juce::var (obj));
 }
@@ -163,7 +186,6 @@ void VulcanEditor::timerCallback()
     const int curProg = audioProcessor.getCurrentProgram();
     const bool curMod = audioProcessor.isPresetModified();
 
-    // If host (e.g. FL Studio wrapper arrows) changed preset externally, push full parameter sync
     if (curProg != lastSyncedPreset || curMod != lastSyncedModified)
         pushFullSyncToWeb();
 
@@ -175,6 +197,12 @@ void VulcanEditor::timerCallback()
     obj->setProperty ("sampleRate", audioProcessor.getSampleRate() > 0.0 ? audioProcessor.getSampleRate() : 44100.0);
     obj->setProperty ("currentPreset", curProg);
     obj->setProperty ("presetModified", curMod);
+
+    for (const auto* id : kAllParamIDs)
+    {
+        if (auto* param = audioProcessor.apvts.getParameter (id))
+            obj->setProperty (juce::String ("p_") + id, static_cast<double> (param->getValue()));
+    }
 
     webView.emitEventIfBrowserIsVisible ("telemetryFrame", juce::var (obj));
 }
